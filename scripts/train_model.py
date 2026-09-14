@@ -1,12 +1,18 @@
+from pathlib import Path
+
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 import joblib
 
+BASE_DIR = Path(__file__).resolve().parents[1]
+DATA_PATH = BASE_DIR / "data" / "Obfuscated-MalMem2022.csv"
+MODEL_PATH = BASE_DIR / "models" / "random_forest_model.pkl"
+
 # 1. Load and clean the data exactly like we did in the test
 print("Loading data...")
-df = pd.read_csv("Obfuscated-MalMem2022.csv")
+df = pd.read_csv(DATA_PATH)
 df['Class'] = df['Class'].apply(lambda x: 0 if x == 'Benign' else 1)
 if 'Category' in df.columns:
     df = df.drop(columns=['Category'])
@@ -33,5 +39,5 @@ print(f"\n✅ AI Training Complete!")
 print(f"🎯 Model Accuracy: {accuracy * 100:.2f}%")
 
 # 5. Save the trained AI brain to a file
-joblib.dump(model, "random_forest_model.pkl")
-print("💾 Model saved successfully as 'random_forest_model.pkl'")
+joblib.dump(model, MODEL_PATH)
+print(f"💾 Model saved successfully as '{MODEL_PATH.name}'")

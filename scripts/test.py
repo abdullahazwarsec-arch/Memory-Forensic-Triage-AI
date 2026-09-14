@@ -1,7 +1,12 @@
+from pathlib import Path
+
 import pandas as pd
 
+BASE_DIR = Path(__file__).resolve().parents[1]
+DATA_PATH = BASE_DIR / "data" / "Obfuscated-MalMem2022.csv"
+
 print("Step 1: Reading dataset...")
-df = pd.read_csv("Obfuscated-MalMem2022.csv")
+df = pd.read_csv(DATA_PATH)
 
 # 1. Check for missing or broken values
 missing = df.isnull().sum().sum()

@@ -1,15 +1,22 @@
+from pathlib import Path
+
 import pandas as pd
 import shap
 import joblib
 import matplotlib.pyplot as plt
 
+BASE_DIR = Path(__file__).resolve().parents[1]
+MODEL_PATH = BASE_DIR / "models" / "random_forest_model.pkl"
+DATA_PATH = BASE_DIR / "data" / "Obfuscated-MalMem2022.csv"
+OUTPUTS_DIR = BASE_DIR / "outputs"
+
 # 1. Load the saved AI Brain
 print("Loading saved AI model...")
-model = joblib.load("random_forest_model.pkl")
+model = joblib.load(MODEL_PATH)
 
 # 2. Load the dataset
 print("Loading dataset for explanation...")
-df = pd.read_csv("Obfuscated-MalMem2022.csv")
+df = pd.read_csv(DATA_PATH)
 df['Class'] = df['Class'].apply(lambda x: 0 if x == 'Benign' else 1)
 if 'Category' in df.columns:
     df = df.drop(columns=['Category'])
@@ -38,5 +45,5 @@ print("Creating visual explanation plot...")
 plt.figure(figsize=(10, 6))
 shap.summary_plot(malware_explanations, X_sample, show=False)
 
-plt.savefig("shap_summary.png", bbox_inches='tight', dpi=300)
-print("✅ Explainable AI plot saved successfully as 'shap_summary.png'!")
+plt.savefig(OUTPUTS_DIR / "shap_summary.png", bbox_inches='tight', dpi=300)
+print(f"✅ Explainable AI plot saved successfully as '{OUTPUTS_DIR / 'shap_summary.png'}'!")

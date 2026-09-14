@@ -1,2 +1,6 @@
 venv/
 __pycache__/
+*.pyc
+Obfuscated-MalMem2022.csv
+*.pdf
+.vscode/
