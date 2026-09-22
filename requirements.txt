@@ -1,7 +1,11 @@
-pandas
-joblib
 streamlit
-shap
-scikit-learn
-matplotlib
+pandas
 numpy
+scikit-learn
+joblib
+shap
+lime
+matplotlib
+seaborn
+xgboost
+reportlab

@@ -1,0 +1,41 @@
+2026-09-22 17:33:22,753 | INFO | FILE=guaranteed_benign.csv | HASH=2cf7ce10a17d | RISK=NORMAL | CONF=0.0000 | ANOMALY=False
+2026-09-22 17:47:54 | INFO | EVIDENCE_ID=6E3360A4C9F747F7 | FILE=fresh_aggressive_ransomware.csv | ROW=0 | RISK=SUSPICIOUS | CONF=0.7437 | PREDICTION=MALWARE | ANOMALY=False
+2026-09-22 17:47:54 | ERROR | SHAP error for evidence 6E3360A4C9F747F7: Per-column arrays must each be 1-dimensional
+2026-09-22 17:48:25 | INFO | EVIDENCE_ID=44A23B0E0E82DA5C | FILE=fresh_aggressive_ransomware.csv | ROW=0 | RISK=SUSPICIOUS | CONF=0.7437 | PREDICTION=MALWARE | ANOMALY=False
+2026-09-22 17:48:25 | ERROR | SHAP error for evidence 44A23B0E0E82DA5C: Per-column arrays must each be 1-dimensional
+2026-09-22 17:48:36 | INFO | EVIDENCE_ID=29D4884BC5223FE6 | FILE=fresh_aggressive_ransomware.csv | ROW=0 | RISK=SUSPICIOUS | CONF=0.7437 | PREDICTION=MALWARE | ANOMALY=False
+2026-09-22 17:48:36 | ERROR | SHAP error for evidence 29D4884BC5223FE6: Per-column arrays must each be 1-dimensional
+2026-09-22 17:52:04 | INFO | EVIDENCE_ID=242997B0BC03E772 | FILE=guaranteed_benign.csv | ROW=0 | RISK=NORMAL | CONF=0.0000 | PREDICTION=BENIGN | ANOMALY=False
+2026-09-22 17:52:04 | ERROR | SHAP error for evidence 242997B0BC03E772: Per-column arrays must each be 1-dimensional
+2026-09-22 18:37:52 | INFO | EVIDENCE_ID=766233EDE2A6EF1C | FILE=guaranteed_benign.csv | ROW=0 | RISK=NORMAL | CONF=0.0000 | PREDICTION=BENIGN | ANOMALY=False
+2026-09-22 18:43:05 | INFO | EVIDENCE_ID=55556074B7D87622 | FILE=guaranteed_benign.csv | ROW=0 | RISK=NORMAL | CONF=0.0000 | PREDICTION=BENIGN | ANOMALY=False
+2026-09-22 18:43:29 | INFO | EVIDENCE_ID=970BA102AD02C438 | FILE=guaranteed_benign.csv | ROW=0 | RISK=NORMAL | CONF=0.0000 | PREDICTION=BENIGN | ANOMALY=False
+2026-09-22 18:44:42 | INFO | EVIDENCE_ID=0AEC7EC4575CC41E | FILE=guaranteed_benign.csv | ROW=0 | RISK=NORMAL | CONF=0.0000 | PREDICTION=BENIGN | ANOMALY=False
+2026-09-22 18:44:42 | INFO | PDF report saved: C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_0AEC7EC4575CC41E_20260922_184442.pdf | EVIDENCE_ID=0AEC7EC4575CC41E
+2026-09-22 18:46:07 | INFO | EVIDENCE_ID=35B089DAECEFD96B | FILE=test.csv | ROW=0 | RISK=HIGH RISK | CONF=0.8219 | PREDICTION=MALWARE | ANOMALY=False
+2026-09-22 18:46:07 | INFO | PDF report saved: C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_35B089DAECEFD96B_20260922_184607.pdf | EVIDENCE_ID=35B089DAECEFD96B
+2026-09-22 19:00:56 | INFO | PDF report saved: C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_TEST_SUSPICIOUS_20260922_190056.pdf | EVIDENCE_ID=TEST_SUSPICIOUS
+2026-09-22 19:01:14 | INFO | PDF report saved: C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_TEST_NORMAL_20260922_190114.pdf | EVIDENCE_ID=TEST_NORMAL
+2026-09-22 19:01:23 | INFO | PDF report saved: C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_TEST_HIGH_20260922_190123.pdf | EVIDENCE_ID=TEST_HIGH
+2026-09-22 19:07:33 | INFO | EVIDENCE_ID=E2BDFDF5EBD24A6A | FILE=test_sample.csv | ROW=0 | RISK=HIGH RISK | CONF=0.8219 | PREDICTION=MALWARE | ANOMALY=False
+2026-09-22 19:07:33 | INFO | PDF report saved: C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_E2BDFDF5EBD24A6A_20260922_190733.pdf | EVIDENCE_ID=E2BDFDF5EBD24A6A
+2026-09-22 19:11:47 | INFO | EVIDENCE_ID=21828DCEEE3CC0ED | FILE=real_benign_sample.csv | ROW=0 | RISK=HIGH RISK | CONF=0.8219 | PREDICTION=MALWARE | ANOMALY=False
+2026-09-22 19:11:48 | INFO | PDF report saved: C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_21828DCEEE3CC0ED_20260922_191148.pdf | EVIDENCE_ID=21828DCEEE3CC0ED
+2026-09-22 19:56:44 | INFO | EVIDENCE_ID=A80A4552589A9ADB | FILE=guaranteed_malware.csv | ROW=0 | RISK=HIGH RISK | CONF=1.0000 | PREDICTION=MALWARE | ANOMALY=False
+2026-09-22 19:56:44 | INFO | PDF report saved: C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_A80A4552589A9ADB_20260922_195644.pdf | EVIDENCE_ID=A80A4552589A9ADB
+2026-09-22 19:57:56 | INFO | EVIDENCE_ID=BF6B06FD232EB265 | FILE=real_benign_sample.csv | ROW=0 | RISK=HIGH RISK | CONF=0.8219 | PREDICTION=MALWARE | ANOMALY=False
+2026-09-22 19:57:56 | ERROR | SHAP error for evidence BF6B06FD232EB265: 'rgba(238, 233, 255, 0.35)' is not a valid value for color: supported inputs are (r, g, b) and (r, g, b, a) 0-1 float tuples; '#rrggbb', '#rrggbbaa', '#rgb', '#rgba' strings; named color strings; string reprs of 0-1 floats for grayscale values; 'C0', 'C1', ... strings for colors of the color cycle; and pairs combining one of the above with an alpha value
+2026-09-22 19:57:57 | ERROR | LIME error for evidence BF6B06FD232EB265: 'rgba(238, 233, 255, 0.35)' is not a valid value for color: supported inputs are (r, g, b) and (r, g, b, a) 0-1 float tuples; '#rrggbb', '#rrggbbaa', '#rgb', '#rgba' strings; named color strings; string reprs of 0-1 floats for grayscale values; 'C0', 'C1', ... strings for colors of the color cycle; and pairs combining one of the above with an alpha value
+2026-09-22 19:57:57 | INFO | PDF report saved: C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_BF6B06FD232EB265_20260922_195757.pdf | EVIDENCE_ID=BF6B06FD232EB265
+2026-09-22 19:58:20 | ERROR | SHAP error for evidence BF6B06FD232EB265: 'rgba(238, 233, 255, 0.35)' is not a valid value for color: supported inputs are (r, g, b) and (r, g, b, a) 0-1 float tuples; '#rrggbb', '#rrggbbaa', '#rgb', '#rgba' strings; named color strings; string reprs of 0-1 floats for grayscale values; 'C0', 'C1', ... strings for colors of the color cycle; and pairs combining one of the above with an alpha value
+2026-09-22 19:58:20 | ERROR | LIME error for evidence BF6B06FD232EB265: 'rgba(238, 233, 255, 0.35)' is not a valid value for color: supported inputs are (r, g, b) and (r, g, b, a) 0-1 float tuples; '#rrggbb', '#rrggbbaa', '#rgb', '#rgba' strings; named color strings; string reprs of 0-1 floats for grayscale values; 'C0', 'C1', ... strings for colors of the color cycle; and pairs combining one of the above with an alpha value
+2026-09-22 20:15:55 | INFO | EVIDENCE_ID=E9C945453A41D3B2 | FILE=guaranteed_malware.csv | ROW=0 | RISK=HIGH RISK | CONF=1.0000 | PREDICTION=MALWARE | ANOMALY=False
+2026-09-22 20:15:55 | INFO | PDF report saved: C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_E9C945453A41D3B2_20260922_201555.pdf | EVIDENCE_ID=E9C945453A41D3B2
+2026-09-22 20:34:09 | INFO | EVIDENCE_ID=A5E6D13FAA2865E3 | FILE=fresh_aggressive_ransomware.csv | ROW=0 | RISK=SUSPICIOUS | CONF=0.7437 | PREDICTION=MALWARE | ANOMALY=True
+2026-09-22 20:34:09 | INFO | PDF report saved: c:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_A5E6D13FAA2865E3_20260922_203409.pdf | EVIDENCE_ID=A5E6D13FAA2865E3
+2026-09-22 20:34:09 | INFO | EVIDENCE_ID=D3DE26764E51B907 | FILE=clean_system_baseline.csv | ROW=0 | RISK=HIGH RISK | CONF=0.7965 | PREDICTION=MALWARE | ANOMALY=True
+2026-09-22 20:34:27 | INFO | EVIDENCE_ID=D36F9195552AE688 | FILE=fresh_aggressive_ransomware.csv | ROW=0 | RISK=SUSPICIOUS | CONF=0.7437 | PREDICTION=MALWARE | ANOMALY=True
+2026-09-22 20:34:28 | ERROR | SHAP error for evidence D36F9195552AE688: 'rgba(238, 233, 255, 0.35)' is not a valid value for color: supported inputs are (r, g, b) and (r, g, b, a) 0-1 float tuples; '#rrggbb', '#rrggbbaa', '#rgb', '#rgba' strings; named color strings; string reprs of 0-1 floats for grayscale values; 'C0', 'C1', ... strings for colors of the color cycle; and pairs combining one of the above with an alpha value
+2026-09-22 20:35:12 | INFO | EVIDENCE_ID=3DD51CE2A6290634 | FILE=fresh_aggressive_ransomware.csv | ROW=0 | RISK=SUSPICIOUS | CONF=0.7437 | PREDICTION=MALWARE | ANOMALY=True
+2026-09-22 20:35:28 | INFO | EVIDENCE_ID=ABBEB06D5762E199 | FILE=fresh_aggressive_ransomware.csv | ROW=0 | RISK=SUSPICIOUS | CONF=0.7437 | PREDICTION=MALWARE | ANOMALY=True
+2026-09-22 20:35:30 | INFO | PDF report saved: c:\Users\user\Desktop\Final resarch\Memory_Forensics_Project\outputs\forensic_report_ABBEB06D5762E199_20260922_203530.pdf | EVIDENCE_ID=ABBEB06D5762E199

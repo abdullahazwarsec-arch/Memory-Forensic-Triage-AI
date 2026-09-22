@@ -44,4 +44,4 @@ print(f"\nLIME Local Explanation for Instance #{sample_idx}:")
 for feature, weight in exp.as_list():
     print(f"  - {feature}: {weight:.4f}")
 
-print("✅ LIME explainer successfully executed!")
+print("[+] LIME explainer successfully executed!")
