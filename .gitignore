@@ -4,3 +4,13 @@ __pycache__/
 Obfuscated-MalMem2022.csv
 *.pdf
 .vscode/
+
+# Generated evidence workspaces (contain evidence copies and case data)
+outputs/extracted/
+outputs/cases/
+
+# Microsoft Office lock files
+~$*
+
+# Hash sidecars of generated reports (the PDFs themselves are not committed)
+outputs/*.pdf.sha256

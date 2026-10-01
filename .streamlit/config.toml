@@ -1,0 +1,21 @@
+[server]
+# Allow raw memory dumps to be uploaded (size in MB). Larger dumps can be
+# analysed by entering their local path instead of uploading.
+maxUploadSize = 8192
+
+[client]
+# Hide the "Deploy" button and developer menu items
+toolbarMode = "minimal"
+
+[theme]
+# "Forensic Ops" dark theme (matches ui_theme.py tokens)
+base = "dark"
+primaryColor = "#22d3ee"
+backgroundColor = "#070b10"
+secondaryBackgroundColor = "#131d29"
+textColor = "#e6edf3"
+borderColor = "#1f2b3a"
+baseFontSize = 17
+baseRadius = "10px"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
