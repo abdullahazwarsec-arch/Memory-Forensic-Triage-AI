@@ -1,0 +1,223 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>How MemTriage XAI Works</title>
+<style>
+:root{--ink:#16213a;--muted:#5b6478;--line:#dfe3ee;--bg:#f4f6fb;--card:#fff;
+ --c1:#6d5bd0;--c2:#2563eb;--c3:#0891b2;--c4:#dc2626;--c5:#d97706;--c6:#16a34a;--guard:#059669}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg)}
+body{width:1920px;height:1060px;font-family:"Liberation Sans",Arial,sans-serif;color:var(--ink);padding:34px 44px}
+.emo{font-family:"Noto Color Emoji";line-height:1}
+.logo{width:18px;height:18px;flex:none}
+/* header */
+.head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:66px}
+.head h1{font-size:40px;letter-spacing:-.5px}
+.head h1 span{color:var(--c1)}
+.head p{font-size:18px;color:var(--muted);margin-top:6px}
+.badge{display:flex;gap:10px}
+.pill{background:#fff;border:1px solid var(--line);border-radius:30px;padding:8px 16px;font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center;color:var(--muted)}
+/* pipeline */
+.pipe{display:grid;grid-template-columns:repeat(6,1fr);gap:34px;position:relative}
+.step{background:var(--card);border-radius:22px;padding:66px 20px 18px;position:relative;box-shadow:0 6px 22px rgba(22,33,58,.08);border-top:6px solid var(--c);min-height:372px;display:flex;flex-direction:column}
+.step .ic{position:absolute;top:-38px;left:50%;transform:translateX(-50%);width:86px;height:86px;border-radius:50%;
+ background:radial-gradient(circle at 30% 30%,#fff 0,var(--cl) 70%);border:4px solid var(--c);display:flex;align-items:center;justify-content:center;font-size:42px}
+.step .num{position:absolute;top:12px;left:16px;font-size:13px;font-weight:800;color:var(--c);letter-spacing:.1em}
+.step h3{text-align:center;font-size:22px;margin-bottom:8px}
+.step .lead{text-align:center;font-size:15px;color:var(--muted);line-height:1.4;margin-bottom:12px}
+.step ul{list-style:none;font-size:14px;line-height:1.45;flex:1}
+.step li{padding-left:18px;position:relative;margin-bottom:5px}
+.step li:before{content:"";position:absolute;left:4px;top:7px;width:7px;height:7px;border-radius:50%;background:var(--c)}
+.step code{font-family:"DejaVu Sans Mono",monospace;font-size:12px;background:#f1f3f9;padding:1px 5px;border-radius:5px}
+.tech{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
+.chip{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;background:#f4f6fb;border-radius:8px;padding:4px 8px}
+.arrow{position:absolute;top:150px;width:34px;text-align:center;font-size:30px;color:#9aa3b8;font-weight:700}
+.s1{--c:var(--c1);--cl:#e4dffb}.s2{--c:var(--c2);--cl:#dbe7ff}.s3{--c:var(--c3);--cl:#d5f3f8}
+.s4{--c:var(--c4);--cl:#fde0e0}.s5{--c:var(--c5);--cl:#fdeccc}.s6{--c:var(--c6);--cl:#d8f5e1}
+.inputs{display:flex;flex-direction:column;gap:7px;margin:2px 0 6px}
+.in{display:flex;gap:10px;align-items:center;background:#f4f7ff;border:1px solid #d8e3ff;border-radius:12px;padding:7px 10px;font-size:13px;line-height:1.3}
+.in .emo{font-size:24px}
+.in b{font-size:14px}
+.skip{font-size:12.5px;color:var(--muted);background:#f1f3f9;border-radius:8px;padding:6px 9px;margin-top:6px;line-height:1.35}
+/* guard rail */
+.guard{margin-top:22px;background:linear-gradient(90deg,#ecfdf5,#f0fdf9);border:2px solid #a7f3d0;border-radius:18px;padding:14px 22px;display:grid;grid-template-columns:270px repeat(5,1fr) 300px;gap:14px;align-items:center}
+.guard .t{display:flex;gap:12px;align-items:center}
+.guard .t .emo{font-size:38px}
+.guard .t b{font-size:19px;color:#065f46;display:block}
+.guard .t span{font-size:13px;color:#047857}
+.chk{background:#fff;border-radius:12px;border:1px solid #bbf7d0;padding:8px 10px;font-size:12.5px;line-height:1.35;display:flex;gap:8px;align-items:flex-start}
+.chk .emo{font-size:18px}
+.block{background:#fef2f2;border:2px solid #fecaca;border-radius:12px;padding:9px 12px;font-size:13px;color:#991b1b;line-height:1.35;display:flex;gap:9px}
+.block .emo{font-size:24px}
+/* bottom */
+.bottom{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:26px;margin-top:22px}
+.panel{background:#fff;border-radius:20px;padding:18px 22px;box-shadow:0 6px 22px rgba(22,33,58,.07)}
+.panel h4{font-size:15px;letter-spacing:.12em;color:var(--muted);margin-bottom:12px;display:flex;gap:8px;align-items:center}
+.panel h4 .emo{font-size:20px}
+.verdict{display:flex;gap:16px;align-items:center;margin-bottom:12px}
+.gauge{flex:1}
+.bar{display:flex;height:30px;border-radius:15px;overflow:hidden;font-size:12.5px;font-weight:800;color:#fff}
+.bar div{display:flex;align-items:center;justify-content:center}
+.ticks{display:flex;font-size:12px;color:var(--muted);margin-top:4px;position:relative;height:16px}
+.ticks span{position:absolute}
+.flag{background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;padding:8px 10px;font-size:12.5px;width:200px;line-height:1.35}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}
+.tab{background:#f4f6fb;border-radius:10px;padding:7px 11px;font-size:13px;font-weight:700;display:flex;gap:7px;align-items:center}
+.tab .emo{font-size:17px}
+.flow{display:flex;align-items:center;gap:8px}
+.mini{flex:1;background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:10px 8px;text-align:center;font-size:12.5px;line-height:1.35}
+.mini .emo{font-size:30px;display:block;margin-bottom:5px}
+.mini b{font-size:13.5px;display:block}
+.ar{color:#9aa3b8;font-size:22px;font-weight:700}
+.note{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.4}
+.tools{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tool{display:flex;align-items:center;gap:9px;background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:7px 10px;font-size:13.5px;font-weight:700;line-height:1.15}
+.tool .logo,.tool .emo{width:24px;height:24px;font-size:22px;flex:none;text-align:center}
+.tool small{display:block;font-weight:400;color:var(--muted);font-size:11.5px}
+</style></head><body>
+
+<div class="head">
+ <div>
+  <h1><span>MemTriage XAI</span> — how the tool works</h1>
+  <p>Give it a Windows memory dump → it finds signs of malware, explains why, and proves the evidence was never changed.</p>
+ </div>
+ <div class="badge">
+  <div class="pill"><span class="emo">🎓</span>Final-year project</div>
+  <div class="pill">{{logo:streamlit}} streamlit run app.py · localhost:8501</div>
+ </div>
+</div>
+
+<div class="pipe">
+ <div class="step s1"><div class="ic emo">🗂️</div><div class="num">STEP 1</div>
+  <h3>Open a case</h3>
+  <div class="lead">Who is investigating, which case, and when.</div>
+  <ul>
+   <li>Case number + analyst name (required)</li>
+   <li>Unit and notes (optional)</li>
+   <li>Open / close time saved in local time and UTC</li>
+   <li>Nothing else unlocks until a case is open</li>
+  </ul>
+  <div class="tech"><div class="chip"><span class="emo">📁</span><code>outputs/cases/&lt;case&gt;/case.json</code></div></div>
+ </div>
+
+ <div class="step s2"><div class="ic emo">📥</div><div class="num">STEP 2</div>
+  <h3>Load evidence</h3>
+  <div class="lead">Choose one of three inputs:</div>
+  <div class="inputs">
+   <div class="in"><span class="emo">🧠</span><div><b>Memory dump</b><br>.raw .mem .vmem .dmp — upload (≤ 8 GB) or file path</div></div>
+   <div class="in"><span class="emo">📄</span><div><b>Volatility CSV</b><br>55 feature columns, 1 row per snapshot</div></div>
+   <div class="in"><span class="emo">🧪</span><div><b>Sample profile</b><br>ready-made demo files</div></div>
+  </div>
+  <ul><li>Fingerprinted on arrival (SHA-256 + MD5) and given an evidence ID</li></ul>
+  <div class="tech"><div class="chip">{{logo:windows}} Windows images only</div></div>
+ </div>
+
+ <div class="step s3"><div class="ic emo">🔬</div><div class="num">STEP 3</div>
+  <h3>Extract features</h3>
+  <div class="lead">Turn gigabytes of RAM into 55 numbers.</div>
+  <ul>
+   <li><b>Volatility 3</b> identifies the Windows kernel, then runs 9 plugins</li>
+   <li><code>pslist</code> <code>dlllist</code> <code>handles</code> <code>ldrmodules</code> <code>malfind</code> <code>psxview</code> <code>modules</code> <code>svcscan</code> <code>callbacks</code></li>
+   <li>Counts processes, DLLs, handles, injected code, hidden processes, services, drivers</li>
+  </ul>
+  <div class="skip">CSV and sample inputs already contain the 55 features, so they skip this step.</div>
+  <div class="tech"><div class="chip"><span class="emo">🧬</span>Volatility 3</div><div class="chip">{{logo:pandas}} pandas</div></div>
+ </div>
+
+ <div class="step s4"><div class="ic emo">🤖</div><div class="num">STEP 4</div>
+  <h3>AI detection</h3>
+  <div class="lead">Two models look at the same 55 numbers.</div>
+  <ul>
+   <li><b>🌲 Random Forest</b> — 150 decision trees vote: malware score 0–100%</li>
+   <li><b>🛰️ Isolation Forest</b> — “have I ever seen anything like this?” Flags possible <b>zero-day</b> outliers</li>
+   <li>Score → risk level: NORMAL, SUSPICIOUS or HIGH RISK</li>
+  </ul>
+  <div class="tech"><div class="chip">{{logo:scikitlearn}} scikit-learn</div><div class="chip">{{logo:numpy}} NumPy</div></div>
+ </div>
+
+ <div class="step s5"><div class="ic emo">💡</div><div class="num">STEP 5</div>
+  <h3>Explain the verdict</h3>
+  <div class="lead">Show <i>why</i>, in plain English.</div>
+  <ul>
+   <li><b>SHAP</b> — how much each memory clue pushed the score up or down (top 10)</li>
+   <li><b>LIME</b> — simple “if … then” rules around this snapshot (top 8)</li>
+   <li>Two methods cross-check each other</li>
+   <li>Red = toward malware, blue = toward clean</li>
+  </ul>
+  <div class="tech"><div class="chip"><span class="emo">📊</span>SHAP</div><div class="chip"><span class="emo">🍋</span>LIME</div><div class="chip"><span class="emo">📈</span>Altair</div></div>
+ </div>
+
+ <div class="step s6"><div class="ic emo">📑</div><div class="num">STEP 6</div>
+  <h3>Report &amp; seal</h3>
+  <div class="lead">Everything an investigator hands over.</div>
+  <ul>
+   <li>PDF incident report: verdict, reasons, all hashes, custody ledger</li>
+   <li>The PDF’s own hash is recorded (<code>.sha256</code> file)</li>
+   <li>Custody manifest (JSON) per evidence item</li>
+   <li>Every action written to the audit log</li>
+  </ul>
+  <div class="tech"><div class="chip"><span class="emo">🖨️</span>ReportLab</div><div class="chip"><span class="emo">🧾</span><code>logs/triage_audit.log</code></div></div>
+ </div>
+
+ <div class="arrow" style="left:calc((100% - 170px)/6 + 0px)">➜</div>
+ <div class="arrow" style="left:calc((100% - 170px)/6*2 + 34px)">➜</div>
+ <div class="arrow" style="left:calc((100% - 170px)/6*3 + 68px)">➜</div>
+ <div class="arrow" style="left:calc((100% - 170px)/6*4 + 102px)">➜</div>
+ <div class="arrow" style="left:calc((100% - 170px)/6*5 + 136px)">➜</div>
+</div>
+
+<div class="guard">
+ <div class="t"><span class="emo">🛡️</span><div><b>Evidence integrity guard</b><span>SHA-256 + MD5 re-checked at every stage</span></div></div>
+ <div class="chk"><span class="emo">🔐</span><div><b>On arrival</b><br>baseline hash; write-protected working copy</div></div>
+ <div class="chk"><span class="emo">🔁</span><div><b>Around Volatility</b><br>dump re-hashed before and after; CSV hashed</div></div>
+ <div class="chk"><span class="emo">🎯</span><div><b>Before the AI</b><br>files re-hashed; the exact 55-number input is hashed too</div></div>
+ <div class="chk"><span class="emo">⛓️</span><div><b>Ledger</b><br>each entry stores the previous entry’s hash</div></div>
+ <div class="chk"><span class="emo">📌</span><div><b>Before the report</b><br>all re-hashed; PDF sealed with its hash</div></div>
+ <div class="block"><span class="emo">⛔</span><div><b>Any hash mismatch</b> → analysis and report are <b>blocked</b> and the violation is logged.</div></div>
+</div>
+
+<div class="bottom">
+ <div class="panel">
+  <h4><span class="emo">🖥️</span>WHAT YOU SEE ON SCREEN</h4>
+  <div class="verdict">
+   <div class="gauge">
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px">Malware score → risk level</div>
+    <div class="bar"><div style="width:40%;background:#16a34a">✅ NORMAL</div><div style="width:35%;background:#d97706">⚠️ SUSPICIOUS</div><div style="width:25%;background:#dc2626">⛔ HIGH RISK</div></div>
+    <div class="ticks"><span style="left:0">0%</span><span style="left:38%">40%</span><span style="left:73%">75%</span><span style="right:0">100%</span></div>
+   </div>
+   <div class="flag"><b>🛰️ Zero-day check</b><br>shown separately: “outlier” or “within known patterns”</div>
+  </div>
+  <div class="tabs">
+   <div class="tab"><span class="emo">🧭</span>Overview &amp; response steps</div>
+   <div class="tab"><span class="emo">💡</span>Explainability</div>
+   <div class="tab"><span class="emo">🛡️</span>Chain of custody</div>
+   <div class="tab"><span class="emo">📄</span>Report download</div>
+   <div class="tab"><span class="emo">🧾</span>Audit log</div>
+   <div class="tab"><span class="emo">📋</span>Scan all rows (batch)</div>
+  </div>
+ </div>
+
+ <div class="panel">
+  <h4><span class="emo">🏋️</span>DONE ONCE, BEFOREHAND (scripts/)</h4>
+  <div class="flow">
+   <div class="mini"><span class="emo">🗃️</span><b>CIC-MalMem2022</b>58,596 labelled memory snapshots</div><div class="ar">➜</div>
+   <div class="mini"><span class="emo">⚙️</span><b>Train &amp; compare</b>80/20 split, cross-validation</div><div class="ar">➜</div>
+   <div class="mini"><span class="emo">💾</span><b>models/*.pkl</b>loaded by the dashboard</div>
+  </div>
+  <div class="note">Evaluation outputs: confusion matrix, ROC curve, SHAP summary, model comparison table.</div>
+ </div>
+
+ <div class="panel">
+  <h4><span class="emo">🧰</span>BUILT WITH</h4>
+  <div class="tools">
+   <div class="tool">{{logo:python}}<div>Python<small>language</small></div></div>
+   <div class="tool">{{logo:streamlit}}<div>Streamlit<small>dashboard</small></div></div>
+   <div class="tool"><span class="emo">🧬</span><div>Volatility 3<small>memory analysis</small></div></div>
+   <div class="tool">{{logo:scikitlearn}}<div>scikit-learn<small>RF + Isolation Forest</small></div></div>
+   <div class="tool"><span class="emo">📊</span><div>SHAP · LIME<small>explainable AI</small></div></div>
+   <div class="tool">{{logo:pandas}}<div>pandas<small>data handling</small></div></div>
+   <div class="tool"><span class="emo">🖨️</span><div>ReportLab<small>PDF reports</small></div></div>
+   <div class="tool"><span class="emo">🔑</span><div>hashlib<small>SHA-256 · MD5</small></div></div>
+   <div class="tool">{{logo:windows}}<div>Windows<small>memory images</small></div></div>
+  </div>
+ </div>
+</div>
+</body></html>

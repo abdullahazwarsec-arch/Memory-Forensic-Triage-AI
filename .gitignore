@@ -14,3 +14,4 @@ outputs/cases/
 
 # Hash sidecars of generated reports (the PDFs themselves are not committed)
 outputs/*.pdf.sha256
+docs/diagrams/_build/
