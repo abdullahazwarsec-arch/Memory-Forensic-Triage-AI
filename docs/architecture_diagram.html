@@ -1,0 +1,227 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Triage Data Flow</title>
+<style>
+html{background:#0f0b1a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1800px;height:1280px;background:#0f0b1a;font-family:"Liberation Sans",Arial,sans-serif;color:#e9e4f7;position:relative;overflow:hidden}
+.abs{position:absolute}
+.title{left:40px;top:28px;font-size:34px;font-weight:700;color:#fff}
+.sub{left:40px;top:74px;font-size:16px;color:#a99cc8}
+.panel{border:1.5px solid #3a2f5c;border-radius:16px;background:#151026}
+.ph{position:absolute;left:18px;top:14px;font-size:13px;font-weight:700;letter-spacing:.12em}
+.box{border-radius:10px;padding:12px 14px;font-size:13.5px;line-height:1.4;background:#1e1736;border:1.5px solid #4b3d78}
+.box h4{font-size:15px;margin-bottom:5px;color:#fff}
+.box .n{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:9px;margin-right:6px;vertical-align:2px}
+code,.m{font-family:"DejaVu Sans Mono",monospace;font-size:11.5px;color:#d7c8ff}
+.in{border-color:#2f7fb8;background:#132236}.in h4{color:#8fd0ff}.in .n{background:#2f7fb8;color:#fff}
+.en{border-color:#7a52c7}.en .n{background:#7a52c7;color:#fff}
+.ml{border-color:#c2410c;background:#2a1712}.ml .n{background:#c2410c;color:#fff}
+.xai{border-color:#0f9d8a;background:#0f2422}.xai .n{background:#0f9d8a;color:#fff}
+.out{border-color:#16a34a;background:#10241a}.out h4{color:#86efac}
+.tr{border-color:#7c6f99;background:#1a1628}
+.note{border-style:dashed;border-color:#8a7a3a;background:#211d10;color:#e8dca8}
+.chip{display:inline-block;font-family:"DejaVu Sans Mono",monospace;font-size:11px;padding:2px 6px;margin:2px 3px 2px 0;border-radius:6px;background:#1d3a57;color:#cfe9ff}
+.chip b{color:#7dd3fc}
+.tier{display:flex;border-radius:8px;overflow:hidden;font-size:12.5px;font-weight:700;text-align:center}
+.tier div{padding:7px 0}
+table{border-collapse:collapse;font-size:11.5px;width:100%;margin-top:4px}
+td,th{border:1px solid #2d5a3d;padding:2px 6px;text-align:left}
+th{color:#86efac}
+svg{position:absolute;left:0;top:0}
+.lbl{font-size:12px;fill:#bfb3df;font-family:"Liberation Sans",Arial}
+</style></head><body>
+
+<div class="abs title">Memory Forensics AI Triage — How the tool works</div>
+<div class="abs sub">Data flow from a memory dump to a verdict, explanations, a PDF report and an audit trail &nbsp;·&nbsp; <span class="m">streamlit run app.py</span></div>
+
+<!-- Panels -->
+<div class="abs panel" style="left:30px;top:120px;width:430px;height:840px"><div class="ph" style="color:#8fd0ff">① INPUT — WHAT YOU GIVE IT</div></div>
+<div class="abs panel" style="left:490px;top:120px;width:810px;height:840px"><div class="ph" style="color:#c4a8ff">② PROCESSING — app.py (Streamlit dashboard)</div></div>
+<div class="abs panel" style="left:1330px;top:120px;width:440px;height:840px"><div class="ph" style="color:#86efac">③ OUTPUT — WHAT YOU GET BACK</div></div>
+<div class="abs panel" style="left:30px;top:990px;width:1740px;height:270px"><div class="ph" style="color:#c9bfe0">⓪ OFFLINE — MODEL BUILDING (scripts/, run once before using the dashboard)</div></div>
+
+<!-- INPUTS -->
+<div class="abs box in" style="left:50px;top:160px;width:390px;height:150px">
+<h4>Memory dump of a Windows host</h4>
+A RAM image (<code>.raw</code> / <code>.vmem</code> / <code>.mem</code>) captured from the suspect machine.<br><br>
+Run <b>Volatility</b> plugins on it and turn the plugin results into numeric counts (one row per dump).
+</div>
+
+<div class="abs box in" style="left:50px;top:350px;width:390px;height:335px">
+<h4>Feature CSV — the actual input file</h4>
+55 numeric columns named <code>plugin.metric</code>, e.g. <code>malfind.ninjections</code>, <code>pslist.nproc</code>:
+<div style="margin:6px 0">
+<span class="chip"><b>pslist</b> 5</span><span class="chip"><b>dlllist</b> 2</span><span class="chip"><b>handles</b> 13</span>
+<span class="chip"><b>ldrmodules</b> 6</span><span class="chip"><b>malfind</b> 4</span><span class="chip"><b>psxview</b> 14</span>
+<span class="chip"><b>modules</b> 1</span><span class="chip"><b>svcscan</b> 7</span><span class="chip"><b>callbacks</b> 3</span>
+</div>
+• One row = one memory snapshot (one or many rows)<br>
+• Same columns as <i>Obfuscated-MalMem2022</i><br>
+• Missing columns → filled with <b>0</b><br>
+• Non-numeric columns (e.g. <code>Category</code>, <code>Class</code>) are ignored<br>
+• Pre-flight check: <code>scripts/validate_input.py</code>
+</div>
+
+<div class="abs box in" style="left:50px;top:725px;width:390px;height:215px">
+<h4>…or Quick-Load a demo sample</h4>
+Ready-made CSVs in <code>data/test_samples/</code>:<br>
+<span class="m">fresh_aggressive_ransomware.csv<br>fresh_stealth_rootkit.csv<br>fresh_fileless_miner.csv<br>clean_system_baseline.csv<br>guaranteed_malware.csv / guaranteed_benign.csv<br>real_benign_sample.csv</span>
+</div>
+
+<!-- ENGINE -->
+<div class="abs box en" style="left:510px;top:160px;width:240px;height:145px">
+<h4><span class="n">01</span>Ingest</h4>
+<code>pd.read_csv()</code> on the upload or sample.<br>Shows row/column count and a data preview.
+</div>
+<div class="abs box en" style="left:780px;top:160px;width:240px;height:145px">
+<h4><span class="n">02</span>Select target</h4>
+Pick one row for deep analysis, <b>or</b> click <i>“Score all records”</i> for a quick batch verdict on every row.
+</div>
+<div class="abs box en" style="left:1050px;top:160px;width:230px;height:145px">
+<h4><span class="n">03</span>Align features</h4>
+Keep numeric columns, reorder to the model’s 55 <code>feature_names_in_</code>, fill gaps with 0.
+</div>
+
+<div class="abs box ml" style="left:510px;top:345px;width:375px;height:150px">
+<h4><span class="n">04a</span>Random Forest classifier</h4>
+<code>random_forest_model.pkl</code> (100 trees)<br>
+<code>predict_proba()</code> → <b>P(malware)</b> 0…1<br>
+<code>predict()</code> → <b>0 = BENIGN, 1 = MALWARE</b>
+</div>
+<div class="abs box ml" style="left:905px;top:345px;width:375px;height:150px">
+<h4><span class="n">04b</span>Isolation Forest (zero-day layer)</h4>
+<code>isolation_forest.pkl</code><br>
+<code>predict()</code> → <b>-1 = ANOMALY</b> (memory pattern unlike anything seen in training), +1 = normal
+</div>
+
+<div class="abs" style="left:510px;top:515px;width:375px">
+<div style="font-size:12px;color:#bfb3df;margin-bottom:4px">Risk tier from P(malware):</div>
+<div class="tier"><div style="width:40%;background:#14532d">NORMAL &lt;0.40</div><div style="width:35%;background:#854d0e">SUSPICIOUS</div><div style="width:25%;background:#991b1b">HIGH ≥0.75</div></div>
+</div>
+<div class="abs" style="left:905px;top:515px;width:375px;font-size:12.5px;color:#bfb3df;line-height:1.45">
+Both results + timestamp go into one <b>result</b> record that every later step reads.
+</div>
+
+<div class="abs box en" style="left:510px;top:600px;width:240px;height:160px">
+<h4><span class="n">05</span>Chain of custody</h4>
+Evidence ID = first 16 hex of <b>SHA-256</b>(file : row : time).<br>
+Verdict line appended to <code>logs/triage_audit.log</code>
+</div>
+<div class="abs box xai" style="left:780px;top:600px;width:240px;height:160px">
+<h4><span class="n">06a</span>SHAP</h4>
+<code>TreeExplainer</code> on the RF.<br>Top 10 features that pushed the verdict toward malware (+) or benign (−), in plain English.
+</div>
+<div class="abs box xai" style="left:1050px;top:600px;width:230px;height:160px">
+<h4><span class="n">06b</span>LIME</h4>
+Perturbs the row around real training rows (background) and fits a local model → top human-readable rules.
+</div>
+
+<div class="abs box en" style="left:510px;top:795px;width:770px;height:75px">
+<h4><span class="n">07</span>PDF report builder (ReportLab)</h4>
+Evidence ID, source file/row, verdict, confidence, risk, anomaly flag + top 5 SHAP drivers + top 4 LIME rules
+</div>
+
+<!-- OUTPUTS -->
+<div class="abs box out" style="left:1350px;top:160px;width:400px;height:150px">
+<h4>Batch scoring table (all rows)</h4>
+<table><tr><th>Row</th><th>Confidence</th><th>Result</th><th>Risk</th></tr>
+<tr><td>0</td><td>74.4%</td><td>Malware</td><td>SUSPICIOUS</td></tr>
+<tr><td>1</td><td>3.0%</td><td>Benign</td><td>NORMAL</td></tr></table>
+</div>
+<div class="abs box out" style="left:1350px;top:345px;width:400px;height:215px">
+<h4>Triage verdict (selected row)</h4>
+• Prediction: <b>MALWARE</b> or <b>BENIGN</b><br>
+• Confidence: P(malware) as %<br>
+• Risk tier: NORMAL / SUSPICIOUS / HIGH RISK<br>
+• Zero-day anomaly: <b>True / False</b><br>
+• Evidence ID, e.g. <code>ABBEB06D5762E199</code>
+</div>
+<div class="abs box out" style="left:1350px;top:600px;width:400px;height:160px">
+<h4>Explanations (“why?”)</h4>
+• SHAP bar chart + table of top 10 indicators<br>
+• LIME bar chart + rule table<br>
+• Red = pushes toward malware, green = toward benign
+</div>
+<div class="abs box out" style="left:1350px;top:785px;width:400px;height:75px">
+<h4>PDF incident report (download)</h4>
+<code>outputs/forensic_report_&lt;ID&gt;_&lt;time&gt;.pdf</code>
+</div>
+<div class="abs box out" style="left:1350px;top:875px;width:400px;height:70px;font-size:11px">
+<h4 style="font-size:14px;margin-bottom:2px">Audit log line</h4>
+<span class="m" style="font-size:10px">EVIDENCE_ID=… | FILE=… | ROW=0 | RISK=SUSPICIOUS | CONF=0.7437 | PREDICTION=MALWARE | ANOMALY=True</span>
+</div>
+
+<!-- TRAINING -->
+<div class="abs box tr" style="left:50px;top:1040px;width:300px;height:160px">
+<h4>Obfuscated-MalMem2022.csv</h4>
+Labelled benchmark dataset (Benign vs Ransomware / Spyware / Trojan memory dumps).<br>
+<span style="color:#e8dca8">Not in the repo (gitignored) — put it in <code>data/</code>.</span>
+</div>
+<div class="abs box tr" style="left:400px;top:1040px;width:270px;height:160px">
+<h4>train_model.py</h4>
+Class → 0/1, drop <code>Category</code>, 80/20 split, <code>RandomForestClassifier</code> (100 trees), prints accuracy.<br>
+<code>train_multiclass.py</code> → family model
+</div>
+<div class="abs box tr" style="left:720px;top:1040px;width:310px;height:160px">
+<h4>models/</h4>
+<code>random_forest_model.pkl</code> → step 04a<br>
+<code>isolation_forest.pkl</code> → step 04b *<br>
+<code>multiclass_random_forest.pkl</code> †<br>
+<span style="font-size:12px;color:#bfb3df">Loaded once at start-up with <code>joblib.load</code> (cached).</span>
+</div>
+<div class="abs box tr" style="left:1080px;top:1040px;width:330px;height:160px">
+<h4>Evaluation &amp; global XAI</h4>
+<code>evaluate_model.py</code>, <code>benchmark.py</code>, <code>explain_model.py</code>, <code>test_lime.py</code> →
+<code>confusion_matrix.png</code>, <code>roc_curve.png</code>, <code>shap_summary.png</code>, <code>model_comparison.csv</code>
+</div>
+<div class="abs box note" style="left:1440px;top:1040px;width:310px;height:160px;font-size:12.5px">
+<h4 style="color:#f5e7a8">Notes from the code</h4>
+* No script in the repo trains the Isolation Forest; the .pkl is pre-built.<br>
+† Trained, but <b>not used</b> by <code>app.py</code>.<br>
+LIME needs the MalMem2022 CSV as background; without it, it falls back to zeros.
+</div>
+<div class="abs" style="left:50px;top:1222px;width:1700px;font-size:12.5px;color:#a99cc8">
+Synthetic test data: <code>simulate_zeroday.py</code> → <code>apt_zero_day.csv</code> · <code>generate_synthetic_threats.py</code> → ransomware / rootkit / miner samples · <code>extract_confident_samples.py</code>, <code>extract_real_benign.py</code> → <code>test_samples/</code>
+</div>
+
+<svg width="1800" height="1280">
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#b9a6ef"/></marker>
+<marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#4ade80"/></marker>
+<marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#d4c27a"/></marker>
+</defs>
+<g fill="none" stroke="#b9a6ef" stroke-width="2" marker-end="url(#a)">
+<path d="M245 310 V346"/>
+<path d="M440 517 H474 V232 H506"/>
+<path d="M440 832 H474 V517"/>
+<path d="M750 232 H776"/>
+<path d="M1020 232 H1046"/>
+<path d="M1165 305 V325 H697 V341"/>
+<path d="M1092 325 V341"/>
+<path d="M697 495 V511"/>
+<path d="M697 568 V582 H630 V596" />
+<path d="M697 582 H900 V596"/>
+<path d="M900 582 H1165 V596"/>
+<path d="M630 760 V791"/>
+<path d="M900 760 V791"/>
+<path d="M1165 760 V791"/>
+</g>
+<g fill="none" stroke="#4ade80" stroke-width="2" marker-end="url(#g)">
+<path d="M900 160 V142 H1315 V235 H1346"/>
+<path d="M1280 420 H1346"/>
+
+<path d="M1280 680 H1346"/>
+<path d="M1280 832 H1346"/>
+<path d="M510 690 H500 V912 H1346"/>
+</g>
+<text class="lbl" x="1010" y="137">“Score all records”</text>
+<text class="lbl" x="520" y="930">audit log write (step 05)</text>
+<g fill="none" stroke="#d4c27a" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#y)">
+<path d="M350 1120 H396"/>
+<path d="M670 1120 H716"/>
+<path d="M1030 1120 H1076"/>
+<path d="M875 1040 V966"/>
+</g>
+<text class="lbl" x="885" y="985" style="fill:#d4c27a">trained models loaded by app.py</text>
+</svg>
+</body></html>
