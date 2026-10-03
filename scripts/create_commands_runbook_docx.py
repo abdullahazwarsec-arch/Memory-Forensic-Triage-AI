@@ -1,511 +1,545 @@
-import os
+"""
+Builds Memory_Forensics_Commands_And_Execution_Runbook.docx — the command
+reference for setting up, running, verifying, retraining and publishing
+the MemTriage XAI project.
+
+Run from the project root:
+    python scripts/create_commands_runbook_docx.py
+"""
+
 from pathlib import Path
+
 import docx
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import parse_xml
-from docx.oxml.ns import nsdecls
+from docx.oxml import parse_xml, OxmlElement
+from docx.oxml.ns import nsdecls, qn
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DOCX_PATH = BASE_DIR / "Memory_Forensics_Commands_And_Execution_Runbook.docx"
+DOCX_PATH = BASE_DIR / "docs" / "Memory_Forensics_Commands_And_Execution_Runbook.docx"
+PROJECT_DIR = r"C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project"
+REPO_URL = "https://github.com/abdullahazwarsec-arch/Memory-Forensic-Triage-AI.git"
 
+NAVY = RGBColor(0x1F, 0x38, 0x64)
+INK = RGBColor(0x22, 0x22, 0x22)
+GREY = RGBColor(0x55, 0x55, 0x55)
+CMD_RED = RGBColor(0x99, 0x1B, 0x1B)
+
+
+# ── Low-level formatting helpers ──────────────────────────────────────────────
 def set_cell_background(cell, fill_hex):
-    tcPr = cell._tc.get_or_add_tcPr()
-    shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{fill_hex}"/>')
-    tcPr.append(shd)
+    cell._tc.get_or_add_tcPr().append(parse_xml(f'<w:shd {nsdecls("w")} w:val="clear" w:fill="{fill_hex}"/>'))
+
 
 def set_cell_margins(cell, top=100, bottom=100, left=150, right=150):
-    tcPr = cell._tc.get_or_add_tcPr()
-    tcMar = parse_xml(
+    cell._tc.get_or_add_tcPr().append(parse_xml(
         f'<w:tcMar {nsdecls("w")}>'
-        f'<w:top w:w="{top}" w:type="dxa"/>'
-        f'<w:bottom w:w="{bottom}" w:type="dxa"/>'
-        f'<w:left w:w="{left}" w:type="dxa"/>'
-        f'<w:right w:w="{right}" w:type="dxa"/>'
+        f'<w:top w:w="{top}" w:type="dxa"/><w:bottom w:w="{bottom}" w:type="dxa"/>'
+        f'<w:left w:w="{left}" w:type="dxa"/><w:right w:w="{right}" w:type="dxa"/>'
         f'</w:tcMar>'
-    )
-    tcPr.append(tcMar)
+    ))
 
-def add_code_callout(doc, cmd_title, cmd_str, explanation=""):
+
+def set_left_bar(cell, color_hex):
+    cell._tc.get_or_add_tcPr().append(parse_xml(
+        f'<w:tcBorders {nsdecls("w")}>'
+        f'<w:left w:val="single" w:sz="24" w:space="0" w:color="{color_hex}"/>'
+        f'<w:top w:val="nil"/><w:right w:val="nil"/><w:bottom w:val="nil"/>'
+        f'</w:tcBorders>'
+    ))
+
+
+def add_page_number_footer(section):
+    p = section.footer.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run("MemTriage XAI — Commands & Execution Runbook · Page ")
+    run.font.size = Pt(8.5)
+    run.font.color.rgb = GREY
+    field_run = p.add_run()
+    field_run.font.size = Pt(8.5)
+    field_run.font.color.rgb = GREY
+    for tag, text in (("begin", None), (None, "PAGE"), ("end", None)):
+        if tag:
+            el = OxmlElement("w:fldChar")
+            el.set(qn("w:fldCharType"), tag)
+        else:
+            el = OxmlElement("w:instrText")
+            el.set(qn("xml:space"), "preserve")
+            el.text = text
+        field_run._r.append(el)
+
+
+# ── Content blocks ────────────────────────────────────────────────────────────
+def heading(doc, text, level):
+    h = doc.add_heading(text, level=level)
+    h.paragraph_format.space_before = Pt(14 if level == 1 else 10)
+    h.paragraph_format.space_after = Pt(6)
+    return h
+
+
+def para(doc, text, italic=False):
+    p = doc.add_paragraph()
+    r = p.add_run(text)
+    r.italic = italic
+    p.paragraph_format.space_after = Pt(6)
+    return p
+
+
+def bullets(doc, items):
+    for item in items:
+        p = doc.add_paragraph(style="List Bullet")
+        if isinstance(item, tuple):          # (bold lead-in, rest)
+            r = p.add_run(item[0])
+            r.bold = True
+            p.add_run(item[1])
+        else:
+            p.add_run(item)
+        p.paragraph_format.space_after = Pt(2)
+    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+
+def command(doc, title, cmd, explanation="", output=""):
+    """Grey command box: title, the exact command, what it does and what you should see."""
     tbl = doc.add_table(rows=1, cols=1)
     tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
     cell = tbl.cell(0, 0)
     set_cell_background(cell, "F2F5F9")
-    set_cell_margins(cell, top=100, bottom=100, left=160, right=160)
-    
-    tcPr = cell._tc.get_or_add_tcPr()
-    borders = parse_xml(
-        f'<w:tcBorders {nsdecls("w")}>'
-        f'<w:left w:val="single" w:sz="24" w:space="0" w:color="1F3864"/>'
-        f'<w:top w:val="none"/>'
-        f'<w:right w:val="none"/>'
-        f'<w:bottom w:val="none"/>'
-        f'</w:tcBorders>'
-    )
-    tcPr.append(borders)
-    
+    set_cell_margins(cell, top=90, bottom=90, left=160, right=160)
+    set_left_bar(cell, "1F3864")
+
     p = cell.paragraphs[0]
-    p.paragraph_format.space_before = Pt(2)
-    p.paragraph_format.space_after = Pt(2)
-    
-    r_t = p.add_run(f"⚡ {cmd_title}\n")
-    r_t.bold = True
-    r_t.font.name = "Calibri"
-    r_t.font.size = Pt(10.5)
-    r_t.font.color.rgb = RGBColor(0x1F, 0x38, 0x64)
-    
-    r_c = p.add_run(f"{cmd_str}\n")
-    r_c.font.name = "Consolas"
-    r_c.font.size = Pt(10)
-    r_c.bold = True
-    r_c.font.color.rgb = RGBColor(0x99, 0x1B, 0x1B) # Crimson red for commands
-    
+    r = p.add_run(title)
+    r.bold = True
+    r.font.size = Pt(10.5)
+    r.font.color.rgb = NAVY
+
+    for line in cmd.split("\n"):
+        pc = cell.add_paragraph()
+        pc.paragraph_format.space_after = Pt(0)
+        rc = pc.add_run(line)
+        rc.font.name = "Consolas"
+        rc.font.size = Pt(10)
+        rc.bold = True
+        rc.font.color.rgb = CMD_RED
+
     if explanation:
-        r_e = p.add_run(explanation)
-        r_e.font.name = "Calibri"
-        r_e.font.size = Pt(9.5)
-        r_e.font.italic = True
-        r_e.font.color.rgb = RGBColor(0x44, 0x44, 0x44)
-        
+        pe = cell.add_paragraph()
+        pe.paragraph_format.space_before = Pt(4)
+        re_ = pe.add_run(explanation)
+        re_.font.size = Pt(9.5)
+        re_.font.color.rgb = INK
+    if output:
+        po = cell.add_paragraph()
+        ro = po.add_run("You should see: ")
+        ro.bold = True
+        ro.font.size = Pt(9.5)
+        ro.font.color.rgb = NAVY
+        ro2 = po.add_run(output)
+        ro2.font.size = Pt(9.5)
+        ro2.font.color.rgb = GREY
+    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+
+def callout(doc, label, text, fill="FFF4E5", bar="C2410C"):
+    """Coloured note box for warnings and tips."""
+    tbl = doc.add_table(rows=1, cols=1)
+    tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+    cell = tbl.cell(0, 0)
+    set_cell_background(cell, fill)
+    set_cell_margins(cell, top=90, bottom=90, left=160, right=160)
+    set_left_bar(cell, bar)
+    p = cell.paragraphs[0]
+    r = p.add_run(f"{label}  ")
+    r.bold = True
+    r.font.size = Pt(10)
+    p.add_run(text).font.size = Pt(10)
+    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+
+
+def warning(doc, text):
+    callout(doc, "⚠ Warning:", text, fill="FFF4E5", bar="C2410C")
+
+
+def tip(doc, text):
+    callout(doc, "💡 Tip:", text, fill="EAF6EE", bar="15803D")
+
+
+def table(doc, headers, widths, rows, mono_cols=()):
+    t = doc.add_table(rows=1, cols=len(headers))
+    t.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t.autofit = False
+    for i, name in enumerate(headers):
+        c = t.rows[0].cells[i]
+        c.text = ""
+        set_cell_background(c, "1F3864")
+        set_cell_margins(c, top=80, bottom=80, left=110, right=110)
+        r = c.paragraphs[0].add_run(name)
+        r.bold = True
+        r.font.size = Pt(9.5)
+        r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        c.paragraphs[0].paragraph_format.space_after = Pt(0)
+    for idx, row_data in enumerate(rows):
+        cells = t.add_row().cells
+        for j, text in enumerate(row_data):
+            c = cells[j]
+            c.text = ""
+            set_cell_background(c, "F7F9FC" if idx % 2 == 0 else "FFFFFF")
+            set_cell_margins(c, top=60, bottom=60, left=110, right=110)
+            for k, line in enumerate(str(text).split("\n")):
+                pp = c.paragraphs[0] if k == 0 else c.add_paragraph()
+                pp.paragraph_format.space_after = Pt(0)
+                rr = pp.add_run(line)
+                rr.font.size = Pt(9)
+                rr.font.color.rgb = INK
+                if j in mono_cols:
+                    rr.font.name = "Consolas"
+                    rr.font.color.rgb = CMD_RED
+    for row in t.rows:
+        for j, w in enumerate(widths):
+            row.cells[j].width = w
     doc.add_paragraph().paragraph_format.space_after = Pt(4)
 
-def format_table(table, col_widths, col_names, data_rows):
-    hdr_cells = table.rows[0].cells
-    for i, name in enumerate(col_names):
-        hdr_cells[i].text = name
-        set_cell_background(hdr_cells[i], "1F3864")
-        set_cell_margins(hdr_cells[i], top=100, bottom=100, left=120, right=120)
-        p = hdr_cells[i].paragraphs[0]
-        p.runs[0].font.bold = True
-        p.runs[0].font.name = "Calibri"
-        p.runs[0].font.size = Pt(9.5)
-        p.runs[0].font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-        
-    for row_idx, row_data in enumerate(data_rows):
-        row = table.add_row()
-        bg_color = "F9FAFC" if row_idx % 2 == 0 else "FFFFFF"
-        for col_idx, text in enumerate(row_data):
-            cell = row.cells[col_idx]
-            cell.text = str(text)
-            set_cell_background(cell, bg_color)
-            set_cell_margins(cell, top=70, bottom=70, left=120, right=120)
-            p = cell.paragraphs[0]
-            if len(p.runs) > 0:
-                p.runs[0].font.name = "Calibri"
-                p.runs[0].font.size = Pt(9)
-                p.runs[0].font.color.rgb = RGBColor(0x22, 0x22, 0x22)
-                
-    for row in table.rows:
-        for idx, width in enumerate(col_widths):
-            row.cells[idx].width = width
 
+# ── Document ──────────────────────────────────────────────────────────────────
 def build_commands_doc():
     doc = docx.Document()
-    
     for s in doc.sections:
-        s.top_margin = Inches(1)
-        s.bottom_margin = Inches(1)
-        s.left_margin = Inches(1)
-        s.right_margin = Inches(1)
-        
-    style_normal = doc.styles['Normal']
-    style_normal.font.name = 'Calibri'
-    style_normal.font.size = Pt(11)
-    style_normal.font.color.rgb = RGBColor(0x2A, 0x2A, 0x2A)
-    
-    # Title
-    p_title = doc.add_paragraph()
-    p_title.paragraph_format.space_before = Pt(0)
-    p_title.paragraph_format.space_after = Pt(4)
-    r_title = p_title.add_run("MEMORY FORENSICS AI TRIAGE SYSTEM")
-    r_title.font.name = "Calibri"
-    r_title.font.size = Pt(22)
-    r_title.font.bold = True
-    r_title.font.color.rgb = RGBColor(0x1F, 0x38, 0x64)
-    
-    p_sub = doc.add_paragraph()
-    p_sub.paragraph_format.space_after = Pt(14)
-    r_sub = p_sub.add_run("Complete Command Reference & Script Execution Runbook (CMD & PowerShell)\nEvery command, input argument, expected output, and dashboard launch instruction")
-    r_sub.font.name = "Calibri"
-    r_sub.font.size = Pt(12)
-    r_sub.font.italic = True
-    r_sub.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
-    
-    # Meta Box
-    meta_table = doc.add_table(rows=1, cols=3)
-    meta_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    meta_cells = meta_table.rows[0].cells
-    meta_items = [
-        ("Shell Environments", "Windows Command Prompt (cmd) / PowerShell"),
-        ("Python Virtual Env", ".\\venv\\Scripts\\python.exe"),
-        ("Web Framework", "Streamlit (Local Web Server: 8501)")
-    ]
-    for idx, (label, val) in enumerate(meta_items):
-        cell = meta_cells[idx]
-        set_cell_background(cell, "EBF1F5")
-        set_cell_margins(cell, top=70, bottom=70, left=90, right=90)
-        p = cell.paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        r1 = p.add_run(f"{label}\n")
-        r1.font.bold = True
-        r1.font.size = Pt(9)
-        r1.font.color.rgb = RGBColor(0x1F, 0x38, 0x64)
-        r2 = p.add_run(val)
-        r2.font.size = Pt(9.5)
-        r2.font.color.rgb = RGBColor(0x11, 0x11, 0x11)
-        
-    doc.add_paragraph().paragraph_format.space_after = Pt(12)
+        s.top_margin = s.bottom_margin = Inches(0.9)
+        s.left_margin = s.right_margin = Inches(0.9)
+        add_page_number_footer(s)
 
-    # ── SECTION 1: MASTER CHEAT SHEET ─────────────────────────────────────────
-    h1 = doc.add_heading("1. Master Quick-Reference Command Cheat Sheet", level=1)
-    h1.paragraph_format.space_before = Pt(10)
-    h1.paragraph_format.space_after = Pt(6)
-    
-    cheat_sheet = [
-        ("01", "Launch Web Dashboard", "streamlit run app.py", "Starts the live cyber forensic dashboard on localhost:8501"),
-        ("02", "Train Binary Model", "python scripts/train_model.py", "Trains Random Forest on 55 features; outputs random_forest_model.pkl"),
-        ("03", "Train Multi-Class Model", "python scripts/train_multiclass.py", "Trains malware family model; outputs multiclass_random_forest.pkl"),
-        ("04", "Evaluate & Visualise", "python scripts/evaluate_model.py", "Generates ROC curve, Confusion Matrix, and model_comparison.csv"),
-        ("05", "Multi-Model Benchmark", "python scripts/benchmark.py", "5-fold cross-validation benchmarking (RF vs GBDT vs Logistic Reg)"),
-        ("06", "Global SHAP Analysis", "python scripts/explain_model.py", "Interrogates AI with TreeSHAP; saves outputs/shap_summary.png"),
-        ("07", "Local LIME Validation", "python scripts/test_lime.py", "Generates local surrogate linear decision rules for individual samples"),
-        ("08", "Data Integrity Audit", "python scripts/verify_data_integrity.py", "Checks total rows, duplicates, and verifies ZERO label leakage"),
-        ("09", "Pre-Flight Evidence Check", "python scripts/validate_input.py", "Validates CSV files for empty rows, missing features, and NaN values"),
-        ("10", "Generate Synthetic Threats", "python scripts/generate_synthetic_threats.py", "Generates test profiles: Rootkit (DKOM), Ransomware, Cryptominer"),
-        ("11", "Simulate APT Zero-Day", "python scripts/simulate_zeroday.py", "Mutates memory metrics to generate novel threat apt_zero_day.csv"),
-        ("12", "Extract Real Baseline", "python scripts/extract_real_benign.py", "Extracts clean workstation profile to real_benign_sample.csv"),
-        ("13", "Extract Benchmark Samples", "python scripts/extract_confident_samples.py", "Extracts guaranteed 0% benign and 100% malware test files"),
-        ("14", "Generate PDF Report", "python scripts/generate_report.py", "Compiles standalone incident response PDF brief using ReportLab"),
-        ("15", "Dataset Sanity Check", "python scripts/test.py", "Quick check of MalMem2022 dataset loading and binary class counts"),
-        ("16", "Build Viva Word Doc", "python scripts/create_viva_doc.py", "Compiles comprehensive Viva defense preparation guide (.docx)")
-    ]
-    
-    t_cs = doc.add_table(rows=1, cols=4)
-    t_cs.alignment = WD_TABLE_ALIGNMENT.CENTER
-    format_table(
-        t_cs,
-        [Inches(0.4), Inches(1.8), Inches(2.3), Inches(2.5)],
-        ["#", "Task Name", "Exact Command to Enter", "Expected Output / Action"],
-        cheat_sheet
-    )
-    doc.add_paragraph().paragraph_format.space_after = Pt(12)
+    normal = doc.styles["Normal"]
+    normal.font.name = "Calibri"
+    normal.font.size = Pt(10.5)
+    normal.font.color.rgb = INK
+    for lvl, size in ((1, 16), (2, 13)):
+        st = doc.styles[f"Heading {lvl}"]
+        st.font.name = "Calibri"
+        st.font.size = Pt(size)
+        st.font.color.rgb = NAVY
 
-    # ── SECTION 2: ENVIRONMENT PREPARATION ────────────────────────────────────
-    h1 = doc.add_heading("2. Terminal Setup & Environment Activation", level=1)
-    h1.paragraph_format.space_before = Pt(12)
-    h1.paragraph_format.space_after = Pt(6)
-    
-    doc.add_paragraph(
-        "Before running any script, open your terminal (Command Prompt or PowerShell) and navigate to the project directory:"
-    )
-    add_code_callout(
-        doc,
-        "Step 1: Navigate to the Project Root Folder",
-        'cd "c:\\Users\\user\\Desktop\\Final resarch\\Memory_Forensics_Project"',
-        "Explanation: Ensures all relative filepaths (data/, models/, scripts/, outputs/) resolve correctly."
-    )
-    
-    add_code_callout(
-        doc,
-        "Step 2A: Activate Virtual Environment in Windows Command Prompt (CMD)",
-        "venv\\Scripts\\activate.bat",
-        "Explanation: Your prompt will show (venv). All Python commands now use the project's dependencies."
-    )
-    
-    add_code_callout(
-        doc,
-        "Step 2B: Activate Virtual Environment in Windows PowerShell",
-        ".\\venv\\Scripts\\Activate.ps1",
-        "Note: If PowerShell displays an 'ExecutionPolicy' security error, run: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass"
-    )
-    
-    add_code_callout(
-        doc,
-        "Alternative: Direct Execution Without Activation (Failsafe)",
-        ".\\venv\\Scripts\\python.exe scripts/<script_name>.py",
-        "Explanation: Invokes the virtual environment's Python binary directly without needing manual activation."
-    )
+    # Title block
+    p = doc.add_paragraph()
+    r = p.add_run("MemTriage XAI — Memory Forensics AI Triage")
+    r.font.size = Pt(22)
+    r.bold = True
+    r.font.color.rgb = NAVY
+    p = doc.add_paragraph()
+    r = p.add_run("Commands & Execution Runbook")
+    r.font.size = Pt(15)
+    r.font.color.rgb = NAVY
+    p = doc.add_paragraph()
+    r = p.add_run("Every command you need to set up, run, verify, retrain and publish the project — "
+                  "with what each one does and what you should see.")
+    r.italic = True
+    r.font.color.rgb = GREY
+    p.paragraph_format.space_after = Pt(10)
 
-    # ── SECTION 3: STEP-BY-STEP SCRIPT EXECUTION RUNBOOK ──────────────────────
-    h1 = doc.add_heading("3. Detailed Script-by-Script Execution Runbook", level=1)
-    h1.paragraph_format.space_before = Pt(14)
-    h1.paragraph_format.space_after = Pt(6)
-    
-    # 3.1 Web Dashboard
-    doc.add_heading("3.1 Launching the Live Forensic Triage Dashboard", level=2)
-    add_code_callout(
-        doc,
-        "Command to Run:",
-        "streamlit run app.py",
-        "Alternative direct: .\\venv\\Scripts\\streamlit.exe run app.py"
-    )
-    doc.add_paragraph(
-        "• What it does: Starts a local web server hosting the full cyber forensic triage GUI.\n"
-        "• URL in Browser: Opens automatically at http://localhost:8501\n"
-        "• Expected Console Output:\n"
-        "  - You can now view your Streamlit app in your browser.\n"
-        "  - Local URL: http://localhost:8501\n"
-        "  - Network URL: http://192.168.x.x:8501\n"
-        "• How to Stop: Press Ctrl + C in the terminal window."
-    )
+    table(doc, ["Item", "Value"], [Inches(1.8), Inches(4.9)], [
+        ("Project folder", PROJECT_DIR),
+        ("Shells", "Windows Command Prompt (CMD) and PowerShell"),
+        ("Python", "3.11, inside the project virtual environment (venv)"),
+        ("Dashboard address", "http://localhost:8501"),
+        ("GitHub repository", REPO_URL),
+    ], mono_cols=())
 
-    # 3.2 Train Binary Model
-    doc.add_heading("3.2 Training the Primary Binary Random Forest Classifier", level=2)
-    add_code_callout(
-        doc,
-        "Command to Run:",
-        "python scripts/train_model.py",
-        "Input Data: data/Obfuscated-MalMem2022.csv"
-    )
-    doc.add_paragraph(
-        "• What it does: Ingests 58,596 memory samples, separates features from Class, splits 80/20, trains 100 decision trees, and evaluates unseen test accuracy.\n"
-        "• Output Files Created: models/random_forest_model.pkl\n"
-        "• Expected Console Output:\n"
-        "  Loading data...\n"
-        "  Splitting data into 80% training and 20% testing...\n"
-        "  Training the Random Forest model (this might take 10-30 seconds)...\n"
-        "  Testing the model...\n"
-        "  [+] AI Training Complete!\n"
-        "  Model Accuracy: 99.99%\n"
-        "  Model saved successfully as 'random_forest_model.pkl'"
-    )
+    heading(doc, "How to read this guide", 2)
+    bullets(doc, [
+        ("Grey boxes ", "contain the exact command to type. Red text is the command itself."),
+        ("<angle brackets> ", "mean “replace with your own value”, e.g. <dump> → C:\\Evidence\\host01.raw. "
+                              "Keep the quotes if the path has spaces."),
+        ("Always run commands from the project folder ", "(section 2, step 1) so that data\\, models\\ and outputs\\ are found."),
+        ("“python” assumes the virtual environment is active. ", "If it is not, use .\\venv\\Scripts\\python.exe instead."),
+    ])
 
-    # 3.3 Train Multi-Class Model
-    doc.add_heading("3.3 Training Multi-Class Malware Family Classification", level=2)
-    add_code_callout(
-        doc,
-        "Command to Run:",
-        "python scripts/train_multiclass.py",
-        "Identifies specific malware categories (Spyware, Ransomware, Trojan)"
-    )
-    doc.add_paragraph(
-        "• What it does: Parses malware family prefix names from the Category column, maps them to integers (0=Benign, 1=Spyware, 2=Ransomware, 3=Trojan), trains a 100-tree Multi-Class Random Forest, and displays precision/recall for every family.\n"
-        "• Output Files Created: models/multiclass_random_forest.pkl\n"
-        "• Expected Console Output:\n"
-        "  Parsed Malware Family Distribution:\n"
-        "  Benign: 29,298 | Ransomware: 9,791 | Trojan: 9,728 | Spyware: 9,779\n"
-        "  Training Multi-Class Random Forest across malware families...\n"
-        "  Multi-Class Classification Report on Unseen Test Data:\n"
-        "  Macro avg F1-Score: > 85%\n"
-        "  [+] Saved model as 'multiclass_random_forest.pkl'"
-    )
+    # 1 ── Quick reference
+    heading(doc, "1. Quick Reference — The Commands You Will Use Most", 1)
+    table(doc, ["Task", "Command", "Notes"], [Inches(1.7), Inches(3.0), Inches(2.0)], [
+        ("Go to the project", f'cd "{PROJECT_DIR}"', "Do this first in every new terminal"),
+        ("Activate venv (CMD)", r"venv\Scripts\activate.bat", "Prompt shows (venv)"),
+        ("Activate venv (PowerShell)", r".\venv\Scripts\Activate.ps1", "See 2.4 if blocked"),
+        ("Start the dashboard", "run_app.bat", "Or: streamlit run app.py"),
+        ("Dashboard on this PC only", "streamlit run app.py --server.address localhost", "Recommended with real evidence"),
+        ("Stop the dashboard", "Ctrl + C", "In the terminal running it"),
+        ("Dump → feature CSV", 'python memdump_extractor.py "<dump>"', "Prints before/after hashes"),
+        ("Identify a dump's OS", 'vol -f "<dump>" windows.info', "Volatility 3"),
+        ("SHA-256 of a file (CMD)", 'certutil -hashfile "<file>" SHA256', "Use MD5 for the MD5 hash"),
+        ("SHA-256 of a file (PowerShell)", 'Get-FileHash "<file>" -Algorithm SHA256', ""),
+        ("Watch the audit log live", r"Get-Content logs\triage_audit.log -Tail 20 -Wait", "PowerShell; Ctrl + C to stop"),
+        ("Check the dataset", "python scripts/verify_data_integrity.py", "Rows, duplicates, features"),
+        ("Train the model", "python scripts/train_model.py", "⚠ Overwrites the dashboard model"),
+        ("Evaluate models", "python scripts/evaluate_model.py", "⚠ Also overwrites the model"),
+        ("See what changed (Git)", "git status", ""),
+        ("Save & upload to GitHub", 'git add -A\ngit commit -m "<message>"\ngit push origin main', "Three commands, in order"),
+        ("Rebuild this document", "python scripts/create_commands_runbook_docx.py", ""),
+    ], mono_cols=(1,))
 
-    # 3.4 Academic Model Evaluation
-    doc.add_heading("3.4 Academic Model Evaluation & Visual Artifacts Generation", level=2)
-    add_code_callout(
-        doc,
-        "Command to Run:",
-        "python scripts/evaluate_model.py",
-        "Generates publication-quality charts and comparative statistics"
-    )
-    doc.add_paragraph(
-        "• What it does: Runs Stratified 3-Fold Cross-Validation, compares Random Forest against a regularized Logistic Regression baseline, and renders visual evaluation plots.\n"
-        "• Output Files Created:\n"
-        "  - outputs/model_comparison.csv (Full metrics comparison table)\n"
-        "  - outputs/confusion_matrix.png (Blues confusion matrix plot)\n"
-        "  - outputs/roc_curve.png (Receiver Operating Characteristic plot, AUC=1.0000)\n"
-        "  - models/random_forest_model.pkl (Refreshed best model)\n"
-        "• Expected Console Output:\n"
-        "  [1/5] Loading and preparing dataset...\n"
-        "  [2/5] Performing stratified 80/20 train-test split...\n"
-        "  [3/5] Training and evaluating multiple models...\n"
-        "  Evaluating Logistic Regression -> Mean CV ROC-AUC: 99.99%\n"
-        "  Evaluating Random Forest -> Mean CV ROC-AUC: 100.00%\n"
-        "  [4/5] Best performing model on unseen data: Random Forest\n"
-        "  [5/5] Generating best-model visual outputs..."
-    )
+    # 2 ── Setup
+    heading(doc, "2. Setting Up the Environment", 1)
+    heading(doc, "2.1 Open the project folder", 2)
+    command(doc, "Step 1 — Navigate to the project root", f'cd "{PROJECT_DIR}"',
+            "Every other command assumes you are in this folder. The quotes are required because the path contains spaces.")
+    command(doc, "Check the Python version", "python --version",
+            "The project was built and tested with Python 3.11.", "Python 3.11.9")
 
-    # 3.5 Comparative Benchmarking
-    doc.add_heading("3.5 Multi-Model Benchmarking Across 5 Folds", level=2)
-    add_code_callout(
-        doc,
-        "Command to Run:",
-        "python scripts/benchmark.py",
-        "Cross-validates Random Forest, Gradient Boosting, and Logistic Regression"
-    )
-    doc.add_paragraph(
-        "• What it does: Runs a 5-fold Stratified cross-validation race between 3 standard classification algorithms.\n"
-        "• Expected Console Output:\n"
-        "  Evaluating Random Forest across 5 folds... Mean F1-Score: ~99.98%\n"
-        "  Evaluating Gradient Boosting across 5 folds... Mean F1-Score: ~99.96%\n"
-        "  Evaluating Logistic Regression across 5 folds... Mean F1-Score: ~99.85%\n"
-        "  --- Benchmark Summary ---\n"
-        "  Proves Random Forest provides highest stability and F1-score."
-    )
+    heading(doc, "2.2 Create the virtual environment (first time only)", 2)
+    command(doc, "Create venv", "python -m venv venv",
+            "Creates an isolated Python installation in the venv\\ folder so project packages don't affect the rest of your PC. "
+            "Skip this if the venv\\ folder already exists.")
 
-    # 3.6 Explain Model (SHAP)
-    doc.add_heading("3.6 Generating Global Explainable AI (SHAP) Attribution Plot", level=2)
-    add_code_callout(
-        doc,
-        "Command to Run:",
-        "python scripts/explain_model.py",
-        "Calculates cooperative game-theoretic Shapley values"
-    )
-    doc.add_paragraph(
-        "• What it does: Loads the trained Random Forest brain, takes 100 representative memory samples, computes Shapley values via TreeExplainer, and saves a global feature attribution graph.\n"
-        "• Output Files Created: outputs/shap_summary.png\n"
-        "• Expected Console Output:\n"
-        "  Loading saved AI model...\n"
-        "  Loading dataset for explanation...\n"
-        "  Interrogating the AI with SHAP...\n"
-        "  Creating visual explanation plot...\n"
-        "  [+] Explainable AI plot saved successfully as 'outputs/shap_summary.png'!"
-    )
+    heading(doc, "2.3 Activate the virtual environment (every new terminal)", 2)
+    command(doc, "Command Prompt (CMD)", r"venv\Scripts\activate.bat", "", "(venv) appears at the start of the prompt.")
+    command(doc, "PowerShell", r".\venv\Scripts\Activate.ps1", "", "(venv) appears at the start of the prompt.")
+    command(doc, "Leave the virtual environment", "deactivate")
+    command(doc, "Alternative — no activation needed", r".\venv\Scripts\python.exe <script>.py",
+            "Runs the venv's Python directly. Useful in scripts or if activation fails.")
 
-    # 3.7 Local Explainability (LIME)
-    doc.add_heading("3.7 Testing Local Interpretable Model-agnostic Explanations (LIME)", level=2)
-    add_code_callout(
-        doc,
-        "Command to Run:",
-        "python scripts/test_lime.py",
-        "Generates local linear surrogate decision rules"
-    )
-    doc.add_paragraph(
-        "• What it does: Fits a LimeTabularExplainer, selects a malware profile, perturbs memory features 1,000 times, and outputs the top 5 local decision rules driving the prediction.\n"
-        "• Expected Console Output:\n"
-        "  LIME Local Explanation for Instance #32:\n"
-        "  - handles.avg_handles_per_proc > 9800: +0.3421 (Toward Malware)\n"
-        "  - malfind.ninjections > 0: +0.2814 (Toward Malware)\n"
-        "  - psxview.not_in_eprocess > 0: +0.1980 (Toward Malware)\n"
-        "  [+] LIME explainer successfully executed!"
-    )
+    heading(doc, "2.4 If PowerShell blocks activation", 2)
+    command(doc, "Allow scripts for this terminal only", "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass",
+            "Only affects the current PowerShell window; it resets when the window closes. Then run Activate.ps1 again.")
 
-    # 3.8 Dataset Integrity & Pre-Flight Validation
-    doc.add_heading("3.8 Auditing Data Integrity & Pre-Flight Evidence Checks", level=2)
-    add_code_callout(
-        doc,
-        "Command 1: Dataset Integrity & Leakage Auditor",
-        "python scripts/verify_data_integrity.py",
-        "Checks for target label leakage and duplicate samples"
-    )
-    doc.add_paragraph(
-        "• Expected Output:\n"
-        "  --- DATASET INTEGRITY AUDIT ---\n"
-        "  Total Rows: 58,596\n"
-        "  Duplicate Rows: 0\n"
-        "  Ground Truth Label Columns Detected: ['Class', 'Category']\n"
-        "  Clean Independent Features Count: 55"
-    )
-    
-    add_code_callout(
-        doc,
-        "Command 2: Pre-Flight Evidence-Gating Checker",
-        "python scripts/validate_input.py",
-        "Validates test CSV files for schema alignment and nulls"
-    )
-    doc.add_paragraph(
-        "• Expected Output:\n"
-        "  Validation Report for 'simulated_cobalt_strike.csv':\n"
-        "  Status: PASS\n"
-        "  Missing features: 0 | Null values: 0"
-    )
+    heading(doc, "2.5 Install and check the packages", 2)
+    command(doc, "Install everything the project needs", "pip install -r requirements.txt",
+            "Installs Streamlit, scikit-learn, SHAP, LIME, ReportLab, Volatility 3 and the rest. Run once, or after requirements.txt changes.")
+    command(doc, "Confirm the key packages import",
+            'python -c "import streamlit, sklearn, shap, lime, reportlab, volatility3; print(\'OK\')"', "", "OK")
+    command(doc, "Show an installed package's version", "pip show volatility3",
+            "Replace volatility3 with any package name (streamlit, scikit-learn, shap…).")
+    command(doc, "Record exact versions (for your report / reproducibility)", "pip freeze > package_versions.txt",
+            "Saves every installed package and version to a text file.")
 
-    # 3.9 Threat Generation & Test Samples
-    doc.add_heading("3.9 Generating Threat Profiles & Extracting Baselines", level=2)
-    add_code_callout(
-        doc,
-        "Command 1: Generate Fresh Targeted Threat Scenarios",
-        "python scripts/generate_synthetic_threats.py",
-        "Creates DKOM Rootkit, Ransomware, and Cryptominer profiles"
-    )
-    doc.add_paragraph(
-        "• Output Files Created in data/test_samples/:\n"
-        "  - fresh_stealth_rootkit.csv (Focus: psxview.not_in_eprocess unlinked process)\n"
-        "  - fresh_aggressive_ransomware.csv (Focus: handles.avg_handles_per_proc spike)\n"
-        "  - fresh_fileless_miner.csv (Focus: malfind.ninjections & thread max)"
-    )
-    
-    add_code_callout(
-        doc,
-        "Command 2: Simulate Adversarial Zero-Day Scenario",
-        "python scripts/simulate_zeroday.py",
-        "Mutates genuine malware features to test out-of-distribution resilience"
-    )
-    doc.add_paragraph(
-        "• Output File Created: data/apt_zero_day.csv"
-    )
-    
-    add_code_callout(
-        doc,
-        "Command 3: Extract Authentic Clean Host Baseline",
-        "python scripts/extract_real_benign.py",
-        "Strips labels and extracts clean workstation memory profile"
-    )
-    doc.add_paragraph(
-        "• Output File Created: data/test_samples/real_benign_sample.csv"
-    )
+    heading(doc, "2.6 Files the project needs that are not in Git", 2)
+    bullets(doc, [
+        ("data\\Obfuscated-MalMem2022.csv ", "— the CIC-MalMem2022 dataset (too large for GitHub). Needed for training, "
+                                             "evaluation and the LIME background data. Download it and place it in data\\."),
+        ("venv\\ ", "— recreate it with sections 2.2–2.5 on a new computer."),
+    ])
 
-    # 3.10 PDF Reporting & Test Builders
-    doc.add_heading("3.10 Compiling Forensic Incident Reports (PDF & DOCX)", level=2)
-    add_code_callout(
-        doc,
-        "Command 1: Generate Standalone Forensic PDF Dossier",
-        "python scripts/generate_report.py",
-        "Compiles official incident brief with indicators and playbook"
-    )
-    doc.add_paragraph(
-        "• Output File Created: outputs/forensic_triage_report.pdf"
-    )
-    
-    add_code_callout(
-        doc,
-        "Command 2: Test Full XAI PDF Report Builder",
-        "python scripts/test_pdf_builder.py",
-        "Validates ReportLab rendering with SHAP and LIME tables"
-    )
-    doc.add_paragraph(
-        "• Output File Created: outputs/test_full_xai_report.pdf"
-    )
+    # 3 ── Dashboard
+    heading(doc, "3. Running the Dashboard", 1)
+    command(doc, "Easiest — double-click or run the launcher", "run_app.bat",
+            "Checks the venv exists and starts the dashboard.",
+            "Local URL: http://localhost:8501 — the browser opens automatically.")
+    command(doc, "Standard command (venv active)", "streamlit run app.py")
+    command(doc, "Without activating the venv", r".\venv\Scripts\streamlit.exe run app.py")
+    command(doc, "Also works (Run button in VS Code)", "python app.py",
+            "app.py starts Streamlit itself when run directly.")
+    command(doc, "Use a different port", "streamlit run app.py --server.port 8502",
+            "Use when 8501 is already taken. Then open http://localhost:8502.")
+    command(doc, "Restrict the dashboard to this computer", "streamlit run app.py --server.address localhost",
+            "By default Streamlit also listens on your network (it prints Network/External URLs), so other people "
+            "could open it. Use this whenever you handle real evidence.")
+    command(doc, "Stop the dashboard", "Ctrl + C", "Press in the terminal window that is running Streamlit.")
+    tip(doc, "After editing any .py file (app.py, ui_theme.py, evidence_integrity.py, memdump_extractor.py), "
+             "stop the dashboard with Ctrl + C and start it again so every module reloads.")
 
-    add_code_callout(
-        doc,
-        "Command 3: Compile Complete Viva Defense Guide (.docx)",
-        "python scripts/create_viva_doc.py",
-        "Generates the full comprehensive Viva guide Word document"
-    )
-    doc.add_paragraph(
-        "• Output File Created: Memory_Forensics_AI_Triage_Viva_Defense_Guide.docx"
-    )
+    heading(doc, "3.1 Using the dashboard (no commands — the clicks)", 2)
+    bullets(doc, [
+        ("1. Case session: ", "enter the case number and analyst name (both required), optionally unit and notes, "
+                              "then Open case session. The opening time is recorded automatically."),
+        ("2. Evidence intake: ", "choose Sample profile, Volatility CSV (upload) or Memory dump (upload, or paste a path "
+                                 "for large dumps), then Extract features for dumps."),
+        ("3. Run triage: ", "pick the memory snapshot (row) and press Analyse snapshot. Scan all rows scores every row."),
+        ("4. Results tabs: ", "Overview, Explainability (SHAP / LIME), Chain of custody, Report, Audit log."),
+        ("5. Report: ", "download the sealed PDF from the Report tab; its SHA-256 is shown underneath."),
+        ("6. Finish: ", "press Close case — the closing time is written to the case record and audit log."),
+    ])
 
-    # ── SECTION 4: TROUBLESHOOTING & COMMON MISTAKES ─────────────────────────
-    h1 = doc.add_heading("4. Troubleshooting & Common Terminal Errors", level=1)
-    h1.paragraph_format.space_before = Pt(14)
-    h1.paragraph_format.space_after = Pt(6)
-    
-    tb_data = [
-        (
-            "Error: 'streamlit is not recognized as an internal or external command'",
-            "Virtual environment is not active or Streamlit was installed in a different Python path.",
-            "Solution:\nRun via the python module syntax:\n.\\venv\\Scripts\\python.exe -m streamlit run app.py"
-        ),
-        (
-            "Error: 'Script execution is disabled on this system' (PowerShell)",
-            "Windows PowerShell blocks script execution by default for security.",
-            "Solution:\nSet-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass\nThen re-run: .\\venv\\Scripts\\Activate.ps1"
-        ),
-        (
-            "Error: 'Port 8501 is already in use'",
-            "Another instance of the Streamlit dashboard is already running in the background.",
-            "Solution:\nLaunch on an alternate port:\nstreamlit run app.py --server.port 8502"
-        ),
-        (
-            "Error: 'FileNotFoundError: data/Obfuscated-MalMem2022.csv'",
-            "Terminal working directory is wrong (you ran the command from inside scripts/ instead of project root).",
-            "Solution:\ncd \"c:\\Users\\user\\Desktop\\Final resarch\\Memory_Forensics_Project\"\nAlways run scripts from the project root."
-        )
-    ]
-    t_tb = doc.add_table(rows=1, cols=3)
-    t_tb.alignment = WD_TABLE_ALIGNMENT.CENTER
-    format_table(
-        t_tb,
-        [Inches(2.2), Inches(2.2), Inches(2.6)],
-        ["Observed Terminal Error", "Root Cause Analysis", "Exact Recovery Command / Solution"],
-        tb_data
-    )
+    heading(doc, "3.2 Dashboard settings file", 2)
+    para(doc, ".streamlit\\config.toml controls the theme, the maximum upload size (maxUploadSize = 8192 MB) and the toolbar. "
+              "Restart the dashboard after changing it.")
+
+    # 4 ── Memory dumps
+    heading(doc, "4. Memory Dump Analysis (Volatility 3)", 1)
+    heading(doc, "4.1 Convert a dump to the 55-feature CSV", 2)
+    command(doc, "Extract features from a memory dump", r'python memdump_extractor.py "C:\Evidence\host01_memory.raw"',
+            "Hashes the dump, runs windows.info plus 9 Volatility plugins, builds the 55 features, re-hashes the dump "
+            "to prove it was not changed, and saves the CSV with a .sha256 sidecar.",
+            "progress lines, then “Dump SHA-256 (before)”, “Dump SHA-256 (after) … -> UNCHANGED”, the CSV SHA-256 "
+            "and the 55 feature values.")
+    command(doc, "Choose the output folder", r'python memdump_extractor.py "<dump>" --out "<folder>"',
+            "Default output folder: outputs\\extracted\\<dump name>_<date>_<time>\\")
+    table(doc, ["File created", "What it is"], [Inches(2.4), Inches(4.3)], [
+        ("<dump>_features.csv", "The 55 features — load this in the dashboard as a Volatility CSV"),
+        ("<dump>_features.csv.sha256", "Hash of the CSV in sha256sum format"),
+        ("extraction_report.json", "OS info, plugin timings/row counts, warnings and the before/after hashes"),
+        ("windows.<plugin>.json", "Raw output of each Volatility plugin (evidence for review)"),
+    ], mono_cols=(0,))
+    para(doc, "Supported formats: .raw .mem .vmem .dmp .bin .img .lime .dump — Windows memory images only.")
+    warning(doc, "The first analysis of a new Windows version needs internet access: Volatility downloads the kernel "
+                 "symbol tables once and caches them. Large dumps take several minutes.")
+
+    heading(doc, "4.2 Running Volatility directly", 2)
+    para(doc, "Useful for deeper investigation of a dump after triage. vol is installed in the venv (venv\\Scripts\\vol.exe).")
+    table(doc, ["Purpose", "Command"], [Inches(2.3), Inches(4.4)], [
+        ("Identify the OS and check the dump is readable", 'vol -f "<dump>" windows.info'),
+        ("List running processes", 'vol -f "<dump>" windows.pslist'),
+        ("Process tree (parent → child)", 'vol -f "<dump>" windows.pstree'),
+        ("Command line of each process", 'vol -f "<dump>" windows.cmdline'),
+        ("Injected / suspicious code regions", 'vol -f "<dump>" windows.malfind'),
+        ("Hidden processes (cross-view)", 'vol -f "<dump>" windows.psxview'),
+        ("Network connections", 'vol -f "<dump>" windows.netscan'),
+        ("Services", 'vol -f "<dump>" windows.svcscan'),
+        ("Loaded DLLs of one process", 'vol -f "<dump>" windows.dlllist --pid <PID>'),
+        ("Save output as JSON", 'vol -q -r json -f "<dump>" windows.pslist > pslist.json'),
+        ("List all plugins / help", "vol --help"),
+        ("Help for one plugin", 'vol -f "<dump>" windows.malfind --help'),
+    ], mono_cols=(1,))
+
+    # 5 ── Integrity
+    heading(doc, "5. Evidence Integrity & Chain of Custody", 1)
+    para(doc, "The dashboard hashes evidence automatically. These commands let you prove the hashes independently — "
+              "for example in front of an examiner.")
+    heading(doc, "5.1 Calculate a file's hash", 2)
+    command(doc, "SHA-256 (Command Prompt)", 'certutil -hashfile "<file>" SHA256',
+            "", "“SHA256 hash of <file>:” followed by 64 hex characters.")
+    command(doc, "MD5 (Command Prompt)", 'certutil -hashfile "<file>" MD5')
+    command(doc, "SHA-256 (PowerShell)", 'Get-FileHash "<file>" -Algorithm SHA256',
+            "Shows the hash in upper case — hashes are not case-sensitive, so it still matches the lower-case values in the ledger.")
+
+    heading(doc, "5.2 Check a file against its .sha256 sidecar", 2)
+    command(doc, "Show the recorded hash", 'type "<file>.sha256"', "Format: <hash>  <file name>")
+    command(doc, "Compare automatically (PowerShell)",
+            '$f = "<file>"\n(Get-FileHash $f -Algorithm SHA256).Hash -eq (Get-Content "$f.sha256").Split(" ")[0]',
+            "Prints True if the file is unchanged, False if it was modified.", "True")
+
+    heading(doc, "5.3 Where case records live", 2)
+    table(doc, ["Location", "Contents"], [Inches(3.3), Inches(3.4)], [
+        (r"outputs\cases\<CASE>\case.json", "Case sessions (analyst, opened/closed times) and evidence items"),
+        (r"outputs\cases\<CASE>\<EV-ID>\custody_manifest.json", "Full custody ledger for one evidence item"),
+        ("outputs\\cases\\<CASE>\\<EV-ID>\\evidence\\", "Write-protected working copy of uploaded evidence"),
+        ("outputs\\cases\\<CASE>\\<EV-ID>\\extraction\\", "Volatility output and feature CSV (memory dumps)"),
+        (r"outputs\forensic_report_<ID>_<time>.pdf", "Sealed PDF report (+ .pdf.sha256 sidecar)"),
+        (r"logs\triage_audit.log", "Audit log: sessions, custody events, verdicts"),
+    ], mono_cols=(0,))
+    command(doc, "List all cases", r"dir outputs\cases")
+    command(doc, "Show a case record", r"type outputs\cases\<CASE>\case.json")
+
+    heading(doc, "5.4 Reading the audit log", 2)
+    command(doc, "Show the whole log (CMD)", r"type logs\triage_audit.log")
+    command(doc, "Last 30 lines (PowerShell)", r"Get-Content logs\triage_audit.log -Tail 30")
+    command(doc, "Follow new entries live (PowerShell)", r"Get-Content logs\triage_audit.log -Tail 20 -Wait",
+            "Keep it open while using the dashboard. Ctrl + C to stop.")
+    command(doc, "Entries for one case (CMD)", r'findstr "CASE=<CASE>" logs\triage_audit.log')
+    command(doc, "Find integrity problems (PowerShell)",
+            r'Select-String -Path logs\triage_audit.log -Pattern "MISMATCH|BLOCKED"',
+            "No output means no integrity violations were logged.")
+
+    # 6 ── ML scripts
+    heading(doc, "6. Machine Learning & Explainability Scripts", 1)
+    para(doc, "All scripts are run from the project root as: python scripts/<name>.py. "
+              "Most need data\\Obfuscated-MalMem2022.csv (see 2.6).")
+    warning(doc, "train_model.py and evaluate_model.py both OVERWRITE models\\random_forest_model.pkl — the model the "
+                 "dashboard uses. Back it up first (command below). There is no script in the project that re-creates "
+                 "models\\isolation_forest.pkl, so never delete that file.")
+    command(doc, "Back up the current model before retraining",
+            r"copy models\random_forest_model.pkl models\random_forest_model.backup.pkl")
+    command(doc, "Restore the backup",
+            r"copy /Y models\random_forest_model.backup.pkl models\random_forest_model.pkl")
+
+    table(doc, ["Script (python scripts/…)", "What it does", "Creates / changes"],
+          [Inches(2.0), Inches(2.6), Inches(2.1)], [
+        ("train_model.py", "Trains the binary Random Forest (100 trees) on a random 80/20 split and prints test accuracy",
+         "⚠ models/random_forest_model.pkl"),
+        ("train_multiclass.py", "Trains a Benign / Spyware / Ransomware / Trojan model (not used by the dashboard)",
+         "models/multiclass_random_forest.pkl"),
+        ("evaluate_model.py", "Cross-validation, compares models, draws the plots, saves the best model",
+         "outputs/model_comparison.csv, confusion_matrix.png, roc_curve.png\n⚠ models/random_forest_model.pkl"),
+        ("benchmark.py", "5-fold cross-validation of Random Forest, Gradient Boosting and Logistic Regression",
+         "Console output only"),
+        ("explain_model.py", "Global SHAP summary plot of the trained model", "outputs/shap_summary.png"),
+        ("test_lime.py", "Prints the top LIME rules for one sample", "Console output only"),
+        ("verify_data_integrity.py", "Dataset audit: total rows, duplicate rows, label columns, feature count",
+         "Console output only"),
+        ("validate_input.py", "Checks a CSV (data/simulated_cobalt_strike.csv) for missing features and empty values",
+         "Console output only"),
+        ("test.py", "Quick check that the dataset loads and shows the class balance", "Console output only"),
+        ("generate_synthetic_threats.py", "Creates the rootkit, ransomware and cryptominer test profiles",
+         "data/test_samples/fresh_*.csv (overwrites)"),
+        ("simulate_zeroday.py", "Mutates malware rows into a simulated zero-day profile", "data/apt_zero_day.csv"),
+        ("extract_real_benign.py", "Copies one benign dataset row as a test profile",
+         "data/test_samples/real_benign_sample.csv"),
+        ("extract_confident_samples.py", "Saves a confidently benign and a confidently malicious row",
+         "data/test_samples/guaranteed_benign.csv, guaranteed_malware.csv"),
+        ("generate_report.py", "Standalone example PDF incident brief", "A PDF in outputs/"),
+        ("test_pdf_builder.py", "Tests the PDF layout with SHAP and LIME tables", "outputs/test_full_xai_report.pdf"),
+        ("create_viva_doc.py", "Builds the viva preparation guide", "Memory_Forensics_AI_Triage_Viva_Defense_Guide.docx"),
+        ("create_commands_runbook_docx.py", "Builds this document", "docs/Memory_Forensics_Commands_And_Execution_Runbook.docx"),
+    ], mono_cols=(0,))
+
+    heading(doc, "6.1 Verified example outputs", 2)
+    command(doc, "Dataset audit", "python scripts/verify_data_integrity.py", "",
+            "Total Rows: 58,596 · Duplicate Rows: 534 · Ground Truth Label Columns: ['Category', 'Class'] · "
+            "Clean Independent Features Count: 55")
+    command(doc, "Dataset class balance", "python scripts/test.py", "", "Class 0 (Benign): 29,298 · Class 1 (Malware): 29,298")
+    command(doc, "Pre-flight CSV check", "python scripts/validate_input.py", "",
+            "Validation Report for '…simulated_cobalt_strike.csv': Status: PASS")
+    warning(doc, "The ~100% accuracy printed by train_model.py / evaluate_model.py comes from a random split and is "
+                 "optimistic: near-identical snapshots of the same sample appear in both training and test data, and "
+                 "the model relies heavily on service/driver counts. See the README “Known Limitations”.")
+
+    heading(doc, "6.2 Quick checks of the trained model", 2)
+    command(doc, "Score one CSV with the dashboard model",
+            'python -c "import joblib,pandas as pd; m=joblib.load(\'models/random_forest_model.pkl\'); '
+            'd=pd.read_csv(\'<file>.csv\').reindex(columns=m.feature_names_in_, fill_value=0); '
+            'print(m.predict_proba(d)[:,1])"',
+            "Prints the malware probability for every row (0 = benign, 1 = malware).")
+    command(doc, "Hash the model file (record it with your results)", r"certutil -hashfile models\random_forest_model.pkl SHA256",
+            "Lets you prove which model version produced a result.")
+
+    # 7 ── Git
+    heading(doc, "7. Git & GitHub", 1)
+    command(doc, "First time on a computer — set your identity",
+            'git config --global user.name "<Your Name>"\ngit config --global user.email "<you@example.com>"')
+    command(doc, "Download the project on a new computer", f"git clone {REPO_URL}",
+            "Then recreate the venv (section 2) and add the dataset (2.6).")
+    table(doc, ["Task", "Command", "What it does"], [Inches(1.7), Inches(2.6), Inches(2.4)], [
+        ("See what changed", "git status", "Lists modified, new and deleted files"),
+        ("See the exact changes", "git diff", "Line-by-line changes not yet staged (q to exit)"),
+        ("Stage all changes", "git add -A", "Marks every change to be committed"),
+        ("Stage one file", "git add <file>", ""),
+        ("Commit (save a snapshot)", 'git commit -m "<what you changed>"', "Saves staged changes locally"),
+        ("Upload to GitHub", "git push origin main", "Sends your commits to GitHub"),
+        ("Get the latest from GitHub", "git pull origin main", "Do this before starting work on another PC"),
+        ("History", "git log --oneline -10", "Last 10 commits"),
+        ("Undo edits to one file", "git restore <file>", "⚠ Discards your unsaved edits to that file"),
+        ("Unstage a file", "git restore --staged <file>", "Keeps your edits, removes them from the next commit"),
+    ], mono_cols=(1,))
+    para(doc, "Not uploaded on purpose (.gitignore): venv\\, the dataset CSV, PDFs, outputs\\cases\\, outputs\\extracted\\, "
+              "report .sha256 sidecars, __pycache__ and Word ~$ lock files — evidence and case data should never be public.")
+
+    # 8 ── Housekeeping
+    heading(doc, "8. Housekeeping", 1)
+    command(doc, "Find what is using port 8501", "netstat -ano | findstr :8501", "The last column is the process ID (PID).")
+    command(doc, "Stop that process", "taskkill /PID <PID> /F")
+    command(doc, "Clear Streamlit's cache", "streamlit cache clear")
+    command(doc, "Delete a test case folder",
+            r'attrib -r "outputs\cases\<CASE>\*" /s /d' + "\n" + r'rmdir /s /q "outputs\cases\<CASE>"',
+            "Evidence working copies are write-protected, so remove the read-only flag first.")
+    warning(doc, "Only delete test cases. Deleting a real case destroys its evidence copies and custody records.")
+
+    # 9 ── Troubleshooting
+    heading(doc, "9. Troubleshooting", 1)
+    table(doc, ["Problem", "Cause", "Fix"], [Inches(2.1), Inches(2.1), Inches(2.5)], [
+        ("'streamlit' is not recognized", "venv not active", r".\venv\Scripts\python.exe -m streamlit run app.py"),
+        ("Running scripts is disabled (PowerShell)", "Execution policy", "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass"),
+        ("ModuleNotFoundError", "venv not active or packages missing", "Activate the venv, then pip install -r requirements.txt"),
+        ("Port 8501 is already in use", "Dashboard already running", "Use it, stop it (Ctrl + C / section 8) or add --server.port 8502"),
+        ("FileNotFoundError: data/Obfuscated-MalMem2022.csv", "Wrong folder or dataset missing", "cd to the project root; add the dataset (2.6)"),
+        ("Volatility: “Unable to validate the plugin requirements”", "Not a Windows memory image, or symbols could not be downloaded",
+         "Check the file is a Windows dump; connect to the internet for the first run"),
+        ("Upload too large / browser slow", "Uploads are held in memory", "Paste the dump's path in the Memory dump tab instead"),
+        ("Dashboard shows old behaviour after editing code", "Modules cached in the running server", "Ctrl + C and start the dashboard again"),
+        ("“Analysis blocked — integrity verification failed”", "An evidence file's hash changed since acquisition",
+         "Do not continue — check the custody ledger and audit log; re-acquire the evidence"),
+        ("PermissionError when saving a report or document", "The file is open in a PDF viewer or Word", "Close the file and try again"),
+        ("~$…docx files appear", "Word lock files while a document is open", "Harmless — they disappear when Word closes"),
+    ], mono_cols=())
 
     doc.save(str(DOCX_PATH))
-    print(f"[SUCCESS] Successfully compiled Commands Runbook at: {DOCX_PATH}")
+    print(f"[SUCCESS] Commands runbook saved to: {DOCX_PATH}")
+
 
 if __name__ == "__main__":
     build_commands_doc()
