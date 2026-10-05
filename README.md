@@ -57,6 +57,9 @@ Memory_Forensics_Project/
 ├── README.md                   # Project documentation
 ├── .streamlit/config.toml      # Theme, upload limit (8 GB) and toolbar settings
 │
+├── docs/                       # Project documentation
+│   └── Memory_Forensics_Commands_And_Execution_Runbook.docx  # Every command, explained
+│
 ├── data/                       # Forensic datasets & evaluation telemetry
 │   ├── Obfuscated-MalMem2022.csv   # Primary benchmark dataset (not committed — download separately)
 │   ├── apt_zero_day.csv            # Simulated zero-day memory scenario
@@ -76,7 +79,7 @@ Memory_Forensics_Project/
 │   ├── simulate_zeroday.py / generate_synthetic_threats.py
 │   ├── extract_confident_samples.py / extract_real_benign.py
 │   ├── verify_data_integrity.py / validate_input.py
-│   └── create_viva_doc.py / create_commands_runbook_docx.py
+│   └── create_viva_doc.py / create_commands_runbook_docx.py   # build the Word documents
 │
 ├── outputs/                    # Evaluation artefacts and generated reports
 │   ├── cases/                       # Per-case workspaces (generated, not committed)
@@ -94,6 +97,8 @@ Memory_Forensics_Project/
 The models are trained on **CIC-MalMem2022** (`Obfuscated-MalMem2022.csv`): 58,596 memory snapshots described by 55 Volatility-derived features (processes, DLLs, handles, injected code, hidden processes, services, kernel callbacks), covering benign snapshots and 15 malware families across ransomware, spyware and trojan categories. The CSV is not committed because of its size; place it in `data/` before training.
 
 ## Setup Instructions
+For a full, explained list of every command (setup, dashboard, Volatility, hash verification, scripts, Git and troubleshooting), see [`docs/Memory_Forensics_Commands_And_Execution_Runbook.docx`](docs/Memory_Forensics_Commands_And_Execution_Runbook.docx).
+
 1. Create and activate a virtual environment (Python 3.11 recommended):
 
 ```bash
