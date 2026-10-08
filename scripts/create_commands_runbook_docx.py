@@ -452,8 +452,8 @@ def build_commands_doc():
         ("test_lime.py", "Prints the top LIME rules for one sample", "Console output only"),
         ("verify_data_integrity.py", "Dataset audit: total rows, duplicate rows, label columns, feature count",
          "Console output only"),
-        ("validate_input.py", "Checks a CSV (data/simulated_cobalt_strike.csv) for missing features and empty values",
-         "Console output only"),
+        ("pin_model_hashes.py", "Records the SHA-256 of every model; the dashboard refuses unpinned or modified models",
+         "models/model_hashes.json (commit it after re-training)"),
         ("test.py", "Quick check that the dataset loads and shows the class balance", "Console output only"),
         ("generate_synthetic_threats.py", "Creates the rootkit, ransomware and cryptominer test profiles",
          "data/test_samples/fresh_*.csv (overwrites)"),
@@ -473,8 +473,11 @@ def build_commands_doc():
             "Total Rows: 58,596 · Duplicate Rows: 534 · Ground Truth Label Columns: ['Category', 'Class'] · "
             "Clean Independent Features Count: 55")
     command(doc, "Dataset class balance", "python scripts/test.py", "", "Class 0 (Benign): 29,298 · Class 1 (Malware): 29,298")
-    command(doc, "Pre-flight CSV check", "python scripts/validate_input.py", "",
-            "Validation Report for '…simulated_cobalt_strike.csv': Status: PASS")
+    command(doc, "Verify the audit log chain", "python audit_log.py verify", "",
+            "VERIFIED  …logs\triage_audit.log  (N chained lines, 584 anchored legacy lines)")
+    command(doc, "Verify a custody manifest",
+            "python evidence_integrity.py verify outputs/cases/<case>/<evidence-id>/custody_manifest.json", "",
+            "VERIFIED  …custody_manifest.json  (N events)")
     warning(doc, "The ~100% accuracy printed by train_model.py / evaluate_model.py comes from a random split and is "
                  "optimistic: near-identical snapshots of the same sample appear in both training and test data, and "
                  "the model relies heavily on service/driver counts. See the README “Known Limitations”.")

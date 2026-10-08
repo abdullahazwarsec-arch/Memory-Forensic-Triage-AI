@@ -17,3 +17,7 @@ outputs/*.pdf.sha256
 
 # Secret custody-ledger HMAC key (generated on first run; never commit or share)
 keys/
+
+# Live audit log and its keyed head file (local evidence records, not source code)
+logs/*.log
+logs/*.head

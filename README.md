@@ -51,6 +51,8 @@ Memory_Forensics_Project/
 ├── app.py                      # Main Streamlit dashboard (case sessions, triage, XAI, reporting)
 ├── memdump_extractor.py        # Volatility 3 memory dump → 55-feature CSV extractor (also a CLI)
 ├── evidence_integrity.py       # Hashing, HMAC custody ledger, manifest verifier, model hash pinning
+├── input_validation.py         # Intake checks (size, CSV structure, memory-image signatures) and feature gate
+├── audit_log.py                # HMAC-chained, tamper-evident audit log handler and verifier
 ├── ui_theme.py                 # Dashboard theme and reusable UI components
 ├── run_app.bat                 # Double-click launcher for Windows
 ├── requirements.txt            # Python dependencies
@@ -78,7 +80,7 @@ Memory_Forensics_Project/
 │   ├── generate_report.py                     # Standalone PDF report generator
 │   ├── simulate_zeroday.py / generate_synthetic_threats.py
 │   ├── extract_confident_samples.py / extract_real_benign.py
-│   ├── verify_data_integrity.py / validate_input.py
+│   ├── verify_data_integrity.py / pin_model_hashes.py
 │   └── create_viva_doc.py / create_commands_runbook_docx.py   # build the Word documents
 │
 ├── outputs/                    # Evaluation artefacts and generated reports
@@ -90,7 +92,8 @@ Memory_Forensics_Project/
 │   └── model_comparison.csv
 │
 └── logs/
-    └── triage_audit.log             # Audit log: case sessions, custody events, verdicts
+    ├── triage_audit.log             # HMAC-chained audit log: case sessions, custody events, verdicts
+    └── triage_audit.log.head        # Keyed line count + last chain value (detects tail truncation)
 ```
 
 ## Dataset
@@ -178,6 +181,25 @@ python evidence_integrity.py verify outputs/cases/<case>/<evidence-id>/custody_m
 ### Model integrity
 Models are pickle files, and unpickling a tampered file can execute code. The dashboard therefore reads each model once, checks its SHA-256 against `models/model_hashes.json`, and only then unpickles those verified bytes. An unpinned or modified classifier stops the dashboard; an unverified Isolation Forest is disabled with a warning. Both outcomes are written to the audit log.
 
+### Input validation
+Evidence is checked before a case record is created and again before it reaches the models:
+
+| Gate | Check | On failure |
+|------|-------|------------|
+| Feature CSV upload | ≤ 50 MB, UTF-8 text with no binary data, parsable CSV, header contains model features | Rejected, logged as `INTAKE REJECTED` |
+| Memory image (upload or path) | Supported extension, ≥ 64 MB, file signature (`.dmp` must be `PAGEDU64`/`PAGEDUMP`, `.lime` must be `EMiL`; archives, executables, documents and E01 containers are refused) | Rejected, logged |
+| Working copy | Free disk space ≥ image size + 1 GB | Rejected — analyse in place via the path option |
+| Feature gate | All 55 model features present, numeric, finite and non-negative | Missing / empty / non-numeric values: analyst must acknowledge before analysis. More than 20% of features unusable, or any infinite or negative value: **analysis blocked** |
+
+Every result is recorded in the custody ledger (`Input Validation` stage) and the audit log; an acknowledgement records the analyst's name. The result also appears in the PDF report.
+
+### Tamper-evident audit log
+Each line of `logs/triage_audit.log` ends with `CHAIN=<HMAC-SHA256>` over the previous chain value and the line, keyed with the ledger key. Editing, inserting, deleting or reordering a line breaks the chain. The first chained line (`AUDIT LOG CHAIN GENESIS`) stores the size and SHA-256 of all earlier unchained history, and a keyed `.head` file detects lines removed from the end. Line breaks in logged values are escaped, so crafted input cannot forge log lines. The dashboard sidebar shows the chain status; verify manually with:
+
+```bash
+python audit_log.py verify
+```
+
 ## Memory Dump Feature Extraction
 `memdump_extractor.py` runs `windows.info` followed by 9 Volatility 3 plugins (`pslist`, `dlllist`, `handles`, `ldrmodules`, `malfind`, `psxview`, `modules`, `svcscan`, `callbacks`) and converts their output into the 55 CIC-MalMem2022 features. Volatility 3 lacks some checks used to build the original dataset, so a few features are approximations:
 - `psxview` session / desktop-thread views are derived from other views
@@ -201,6 +223,7 @@ These are findings from testing the current models. They are documented so resul
 - **Shortcut learning.** Only 11 service/module/callback count features reach 99.99% accuracy, and benign `svcscan.nservices` only ranges from 388 to 395, because the benign snapshots come from essentially one machine configuration. The model largely learns "differs from that benign machine" rather than malware behaviour. As a result, some benign-labelled sample profiles score as high risk, and real dumps from other Windows versions can be misjudged.
 - **Explanations reflect this bias.** SHAP/LIME correctly show that service and driver counts drive the verdict; they explain the model, not ground truth.
 - **Custody ledger is keyed, not signed.** Rebuilding the chain requires the ledger key, but anyone who can read `keys/ledger_hmac.key` could still forge a ledger; there is no asymmetric signature or trusted timestamp yet. Model pins protect against replaced model files, not against someone who can also edit `model_hashes.json` and the code.
+- **Audit log head can be rolled back.** Someone with file access who saved an older log and `.head` pair could restore both together; only an external copy of the head (e.g. in the case notes) rules this out.
 - **No authentication.** The dashboard is bound to `localhost` (`.streamlit/config.toml`); the analyst name is self-declared. Add access control before exposing it beyond the examiner's machine.
 - Volatility symbol downloads require internet on first use; uploaded dumps are held in memory (use the path option for large dumps); Windows images only.
 

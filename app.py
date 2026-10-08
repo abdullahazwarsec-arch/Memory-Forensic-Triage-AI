@@ -31,6 +31,8 @@ import altair as alt
 import memdump_extractor
 import ui_theme as ui
 import evidence_integrity as ei
+import input_validation as iv
+import audit_log
 
 
 # ── SECTION 2: PATHS & FOLDER SETUP ──────────────────────────────────────────
@@ -62,13 +64,10 @@ os.makedirs(SAMPLES_DIR, exist_ok=True)
 
 # ── SECTION 3: AUDIT LOGGER SETUP ────────────────────────────────────────────
 # Every prediction is written to a log file with timestamp
-# This is chain-of-custody — a record of every analysis ever run
-logging.basicConfig(
-    filename  = os.path.join(LOG_DIR, "triage_audit.log"),
-    level     = logging.INFO,
-    format    = "%(asctime)s | %(levelname)s | %(message)s",
-    datefmt   = "%Y-%m-%d %H:%M:%S",
-)
+# This is chain-of-custody — a record of every analysis ever run.
+# Each line is HMAC-chained to the previous one (see audit_log.py).
+AUDIT_LOG_PATH = os.path.join(LOG_DIR, "triage_audit.log")
+audit_log.setup(AUDIT_LOG_PATH)
 logger = logging.getLogger("triage")
 
 
@@ -328,6 +327,15 @@ def load_iso_model():
         return None
     logger.info(f"MODEL VERIFIED | {os.path.basename(ISO_PATH)} | SHA256={sha256}")
     return model
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def audit_log_status() -> dict:
+    """Re-verify the audit log's HMAC chain (cached briefly; the sidebar renders on every rerun)."""
+    result = audit_log.verify_log(AUDIT_LOG_PATH)
+    if not result["verified"]:
+        logger.error(f"AUDIT LOG VERIFICATION FAILED | {'; '.join(result['problems'][:5])}")
+    return result
 
 
 @st.cache_data
@@ -752,6 +760,9 @@ def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.
         [Paragraph("Analysed Vector SHA-256", cell_bold), Paragraph(xml_esc(integ.get("vector_sha256", "N/A")), hash_style)],
         [Paragraph("Evaluated Record / Row", cell_bold), Paragraph(f"Row {r_idx}", cell_style)],
         [Paragraph("Telemetry Features", cell_bold), Paragraph(f"{n_feat} memory telemetry indicators", cell_style)],
+        [Paragraph("Input Validation", cell_bold), Paragraph(xml_esc(integ.get("input_validation") or "N/A"),
+                                                              cell_style if integ.get("input_validation", "").startswith("PASSED")
+                                                              else cell_warning)],
         [Paragraph("Analysis Engines", cell_bold), Paragraph("Random Forest Classifier (150 trees) + Isolation Forest (Zero-Day Anomaly Detector)", cell_style)],
     ]
     if chain is not None:
@@ -1179,6 +1190,16 @@ def ingest_csv_evidence(key: str, name: str, kind: str, hashes: dict,
                               "csv_role": "evidence"})
 
 
+def reject_intake(key: str, name: str, error: Exception):
+    """Show and audit-log an intake rejection (logged once per file, despite Streamlit reruns)."""
+    logged = st.session_state.setdefault("rejected_intake", set())
+    if key not in logged:
+        logged.add(key)
+        logger.warning(f"INTAKE REJECTED | CASE={(active_case() or {}).get('case_number', '-')} | "
+                       f"FILE={name} | REASON={error}")
+    st.error(f"**{name}** was rejected: {error}", icon=":material/block:")
+
+
 def render_memory_dump_ingestion():
     """
     Memory dump ingestion: accepts an uploaded dump or a local path, hashes it,
@@ -1201,12 +1222,27 @@ def render_memory_dump_ingestion():
     if uploaded_dump is not None:
         dump_key = f"dump-upload:{uploaded_dump.name}:{uploaded_dump.size}"
         dump_name = uploaded_dump.name
+        dump_size = uploaded_dump.size
+        try:
+            dump_format = iv.check_memory_image(uploaded_dump, uploaded_dump.size, dump_name,
+                                                memdump_extractor.DUMP_EXTENSIONS)
+            iv.check_disk_space(CASES_DIR, uploaded_dump.size)
+        except iv.UploadRejected as e:
+            reject_intake(dump_key, dump_name, e)
+            return None
     elif local_path:
         if not os.path.isfile(local_path):
             st.error(f"File not found: `{local_path}`")
             return None
         dump_key = f"dump-path:{os.path.abspath(local_path)}:{os.path.getsize(local_path)}:{os.path.getmtime(local_path)}"
         dump_name = os.path.basename(local_path)
+        dump_size = os.path.getsize(local_path)
+        try:
+            dump_format = iv.check_memory_image(local_path, dump_size, dump_name,
+                                                memdump_extractor.DUMP_EXTENSIONS)
+        except iv.UploadRejected as e:
+            reject_intake(dump_key, dump_name, e)
+            return None
     else:
         ui.empty_state("🧠", "Add a Windows memory image",
                        "It is hashed (SHA-256 + MD5), Volatility 3 extracts 55 memory features, "
@@ -1215,7 +1251,8 @@ def render_memory_dump_ingestion():
 
     ctx = st.session_state.get("cases", {}).get(dump_key)
     if ctx is None:
-        st.info(f"**{dump_name}** is ready. Extraction runs 9 Volatility plugins and can take a few minutes.",
+        st.info(f"**{dump_name}** passed intake checks ({dump_format}, {ei.format_size(dump_size)}). "
+                f"Extraction runs 9 Volatility plugins and can take a few minutes.",
                 icon=":material/memory:")
         if not st.button("Extract features", type="primary", icon=":material/memory:"):
             return None
@@ -1225,14 +1262,15 @@ def render_memory_dump_ingestion():
             if uploaded_dump is not None:
                 chain = open_case(dump_name, "memory-dump", ei.hash_stream(uploaded_dump),
                                   "Memory image received via dashboard upload",
-                                  details="Hash computed over the exact bytes received from the analyst")
+                                  details=f"Hash computed over the exact bytes received from the analyst | "
+                                          f"Intake check: {dump_format}")
                 progress_bar.progress(0.02, text="Writing write-protected working copy of the memory image...")
                 dump_path = preserve_upload(chain, uploaded_dump)
             else:
                 dump_path = os.path.abspath(local_path)
                 chain = open_case(dump_name, "memory-dump", ei.hash_file(dump_path),
                                   "Memory image referenced in place (read-only, not copied)",
-                                  details=f"Source path: {dump_path}")
+                                  details=f"Source path: {dump_path} | Intake check: {dump_format}")
 
             logger.info(f"Memory dump extraction started: CASE={chain.case_id} | {dump_name}")
             _, csv_path, report = memdump_extractor.extract_features(
@@ -1310,8 +1348,7 @@ def verify_before_analysis(ctx: dict, sample_df: pd.DataFrame, row_index: int, e
     chain = ctx["chain"]
     verify_artifacts(ctx, "Pre-Analysis", "before ML inference")
 
-    file_row = (pd.read_csv(ctx["csv_path"]).select_dtypes(include=[np.number])
-                .iloc[[row_index]].reindex(columns=expected_cols, fill_value=0))
+    file_row = iv.feature_matrix(pd.read_csv(ctx["csv_path"]), expected_cols).iloc[[row_index]]
     role  = f"vector:row{row_index}"
     label = f"Row {row_index} feature vector ({len(expected_cols)} features)"
     chain.record("Analysis Input", "Feature vector read from the hash-verified evidence file", label,
@@ -1338,6 +1375,7 @@ def verify_before_analysis(ctx: dict, sample_df: pd.DataFrame, row_index: int, e
         "csv_md5":         csv.get("md5", ""),
         "vector_sha256":   vector["sha256"],
         "verified_utc":    vector["timestamp"],
+        "input_validation": iv.summary(ctx["validation"]) if ctx.get("validation") else "",
     }
 
 
@@ -1457,6 +1495,54 @@ def render_evidence_summary(ctx: dict, df: pd.DataFrame):
     ui.render_html(f'<div class="fx-card" style="margin: 0.8rem 0 0.9rem; padding-top: 0.4rem;">{hashes}</div>')
 
 
+def render_feature_validation(ctx: dict, df: pd.DataFrame) -> bool:
+    """
+    Feature gate: check the evidence against the model's 55 features. Returns True
+    when analysis may proceed (passed, or warnings acknowledged by the analyst).
+    The check and any acknowledgement are recorded in the custody ledger.
+    """
+    chain  = ctx["chain"]
+    report = iv.check_features(df, load_rf_model().feature_names_in_.tolist())
+    ctx["validation"] = report
+    label  = f"{ctx['name']} feature validation ({report['expected']} model features)"
+    if ctx.get("validation_recorded") != report["sha256"]:
+        ctx["validation_recorded"] = report["sha256"]
+        chain.record("Input Validation", "Feature table checked against the model's expected features",
+                     label, {"sha256": report["sha256"]}, role="validation", details=iv.summary(report))
+        save_manifest(chain)
+        log_fn = logger.info if report["severity"] == iv.SEVERITY_OK else logger.warning
+        log_fn(f"INPUT VALIDATION | CASE={chain.case_id} | EVIDENCE={chain.evidence_id} | {iv.summary(report)}")
+
+    if report["severity"] == iv.SEVERITY_OK:
+        st.success(f"**Input validation passed** — all {report['expected']} model features present, numeric, "
+                   f"finite and non-negative.", icon=":material/fact_check:")
+        return True
+
+    problems = "\n".join(f"- {p}" for p in report["problems"])
+    if report["missing"] or report["no_data"]:
+        with st.expander(f"Unusable features ({len(report['missing']) + len(report['no_data'])})",
+                         icon=":material/list:"):
+            st.code("\n".join(report["missing"] + report["no_data"]), language=None)
+    if report["severity"] == iv.SEVERITY_BLOCK:
+        st.error(f"**Analysis blocked — the evidence failed input validation.**\n\n{problems}",
+                 icon=":material/gpp_bad:")
+        return False
+
+    st.warning(f"**Incomplete evidence** — the verdict may be unreliable:\n\n{problems}",
+               icon=":material/warning:")
+    acknowledged = st.checkbox("I have reviewed these issues and accept that the affected values are treated as 0",
+                               key=f"ack_validation:{ctx['key']}:{report['sha256'][:12]}")
+    if acknowledged and ctx.get("validation_ack") != report["sha256"]:
+        ctx["validation_ack"] = report["sha256"]
+        chain.record("Input Validation", "Analyst acknowledged validation warnings before analysis",
+                     label, {"sha256": report["sha256"]}, role="validation",
+                     details=f"Acknowledged by {chain.analyst}: {'; '.join(report['problems'])}")
+        save_manifest(chain)
+        logger.warning(f"INPUT VALIDATION ACKNOWLEDGED | CASE={chain.case_id} | EVIDENCE={chain.evidence_id} | "
+                       f"ANALYST={chain.analyst}")
+    return acknowledged
+
+
 def render_ingestion():
     """Evidence intake. Returns the active evidence context, or None while waiting."""
     source = st.segmented_control(
@@ -1489,6 +1575,11 @@ def render_ingestion():
         ui.empty_state("📄", "Drop a Volatility CSV to begin",
                        "It is fingerprinted on arrival and re-verified at every step.")
         return None
+    try:
+        iv.check_csv_upload(uploaded, uploaded.size, load_rf_model().feature_names_in_.tolist())
+    except iv.UploadRejected as e:
+        reject_intake(f"csv-upload:{uploaded.name}:{uploaded.size}", uploaded.name, e)
+        return None
     hashes = ei.hash_stream(uploaded)
     return ingest_csv_evidence(key=f"csv-upload:{uploaded.name}:{hashes['sha256']}", name=uploaded.name,
                                kind="csv-upload", hashes=hashes, uploaded_file=uploaded)
@@ -1498,7 +1589,7 @@ def run_selected_triage(evidence: dict, df: pd.DataFrame, row_index: int):
     """Integrity checkpoint + model inference for the selected row."""
     rf_model      = load_rf_model()
     expected_cols = rf_model.feature_names_in_.tolist()
-    sample_df = df.select_dtypes(include=[np.number]).iloc[[row_index]].reindex(columns=expected_cols, fill_value=0)
+    sample_df = iv.feature_matrix(df, expected_cols).iloc[[row_index]]
 
     with st.spinner("Re-verifying evidence hashes..."):
         integrity = verify_before_analysis(evidence, sample_df, row_index, expected_cols)
@@ -1733,6 +1824,12 @@ def render_sidebar(case, evidence, result, pdf_ready: bool):
             f'<div class="fx-side-row"><span>Isolation Forest</span>{ui.pill("Online" if iso_found else "Disabled", "good" if iso_found else "warning")}</div>'
             f'<div class="fx-side-row"><span>Volatility 3</span>{ui.pill("Ready", "good")}</div>'
         )
+        log_check = audit_log_status()
+        ui.render_html(
+            f'<div class="fx-side-row"><span>Audit log chain</span>'
+            f'{ui.pill("Intact", "good") if log_check["verified"] else ui.pill("Broken", "critical")}</div>')
+        if not log_check["verified"]:
+            st.error("Audit log verification failed: " + "; ".join(log_check["problems"][:3]), icon=":material/gpp_bad:")
         st.caption("Audit log: `logs/triage_audit.log`  \nCases: `outputs/cases/`")
 
 
@@ -1773,6 +1870,8 @@ def render_dashboard(state: dict):
     render_evidence_summary(evidence, df)
     with st.expander("Preview evidence data", icon=":material/table_view:"):
         st.dataframe(df.head(10), width="stretch")
+    if not render_feature_validation(evidence, df):
+        return
 
     # ── 2. Triage controls ────────────────────────────────────
     ui.section("Run triage", "Pick a memory snapshot (row) and analyse it.", "🎯")
@@ -1793,7 +1892,7 @@ def render_dashboard(state: dict):
 
         if scan_clicked:
             rf_model = load_rf_model()
-            batch_df = df.select_dtypes(include=[np.number]).reindex(columns=rf_model.feature_names_in_, fill_value=0)
+            batch_df = iv.feature_matrix(df, rf_model.feature_names_in_.tolist())
             probs = rf_model.predict_proba(batch_df)[:, 1]
             st.session_state["batch_summary"] = pd.DataFrame({
                 "Row": range(len(df)),
