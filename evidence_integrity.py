@@ -8,15 +8,25 @@ hashes at every processing stage:
     acquisition → working copy → pre-extraction → post-extraction →
     derived CSV → pre-analysis → analysis input → pre-report → report
 
-Each custody event stores the hash of the previous event ("link hash"), so any
-later edit to the ledger itself breaks the chain and is detected.
+Each custody event stores the link hash of the previous event. Link hashes are
+HMAC-SHA256 values keyed with a secret ledger key (keys/ledger_hmac.key or the
+FORENSICS_LEDGER_KEY environment variable), so a ledger cannot be edited and
+re-chained without that key. Model files are also verified against pinned
+SHA-256 hashes (models/model_hashes.json) before they are unpickled.
+
+Verify an exported manifest from the command line:
+    python evidence_integrity.py verify outputs/cases/<case>/<evidence-id>/custody_manifest.json
 """
 
 import os
 import io
+import sys
 import json
+import hmac
 import stat
 import hashlib
+import secrets
+import functools
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -30,6 +40,12 @@ STATUS_MISMATCH = "MISMATCH"   # re-computed hash differs → integrity violated
 STATUS_MISSING  = "MISSING"    # artefact could not be re-read for verification
 
 GENESIS_LINK = "0" * 64
+
+BASE_DIR          = os.path.dirname(os.path.abspath(__file__))
+LEDGER_KEY_ENV    = "FORENSICS_LEDGER_KEY"            # optional hex-encoded key (overrides the key file)
+LEDGER_KEY_PATH   = os.path.join(BASE_DIR, "keys", "ledger_hmac.key")
+LINK_ALGORITHM    = "HMAC-SHA256"
+MODEL_HASHES_PATH = os.path.join(BASE_DIR, "models", "model_hashes.json")
 
 
 # ── Hashing primitives ────────────────────────────────────────────────────────
@@ -169,7 +185,7 @@ class CustodyChain:
         """Recompute every link hash; False if any custody event was altered."""
         prev = GENESIS_LINK
         for ev in self.events:
-            if ev["prev_link"] != prev or _link_hash(ev) != ev["link_hash"]:
+            if ev["prev_link"] != prev or not hmac.compare_digest(_link_hash(ev), ev["link_hash"]):
                 return False
             prev = ev["link_hash"]
         return True
@@ -200,6 +216,8 @@ class CustodyChain:
             "created_utc":    self.created_utc,
             "integrity":      "VERIFIED" if self.is_intact else "COMPROMISED",
             "ledger_intact":  self.ledger_intact(),
+            "link_algorithm": LINK_ALGORITHM,
+            "ledger_key_id":  ledger_key_id(),
             "head_link_hash": self.head_hash,
             "baselines":      self.baselines,
             "events":         self.events,
@@ -253,8 +271,124 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
-def _link_hash(event: dict) -> str:
+def _link_hash(event: dict, key: bytes = None) -> str:
     fields = ["seq", "timestamp", "stage", "analyst", "action", "artifact", "role", "sha256", "md5",
               "size", "expected_sha256", "status", "details", "prev_link"]
     payload = "|".join(str(event.get(k, "")) for k in fields)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return hmac.new(key or ledger_key(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+# ── Ledger key ────────────────────────────────────────────────────────────────
+@functools.lru_cache(maxsize=1)
+def ledger_key() -> bytes:
+    """
+    Secret key for the custody ledger HMAC. Taken from FORENSICS_LEDGER_KEY (hex)
+    if set, otherwise from keys/ledger_hmac.key, which is created with 256 random
+    bits on first use and write-protected. The key must never leave the lab.
+    """
+    env = os.environ.get(LEDGER_KEY_ENV, "").strip()
+    if env:
+        key = bytes.fromhex(env)
+        if len(key) < 32:
+            raise ValueError(f"{LEDGER_KEY_ENV} must be at least 32 bytes (64 hex characters)")
+        return key
+    if not os.path.isfile(LEDGER_KEY_PATH):
+        os.makedirs(os.path.dirname(LEDGER_KEY_PATH), exist_ok=True)
+        try:
+            fd = os.open(LEDGER_KEY_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o400)
+            with os.fdopen(fd, "wb") as f:
+                f.write(secrets.token_bytes(32))
+        except FileExistsError:
+            pass   # created concurrently by another session
+        make_read_only(LEDGER_KEY_PATH)
+    with open(LEDGER_KEY_PATH, "rb") as f:
+        key = f.read()
+    if len(key) < 32:
+        raise ValueError(f"Ledger key file is invalid (expected 32 bytes): {LEDGER_KEY_PATH}")
+    return key
+
+
+def ledger_key_id(key: bytes = None) -> str:
+    """Public fingerprint of the ledger key (identifies which key sealed a manifest; reveals nothing about it)."""
+    return hashlib.sha256(b"ledger-key-id|" + (key or ledger_key())).hexdigest()[:16].upper()
+
+
+def verify_manifest(path: str, key: bytes = None) -> dict:
+    """
+    Independently re-verify an exported custody manifest: recompute every HMAC
+    link from the events themselves (the stored "integrity" field is not trusted).
+    """
+    key = key or ledger_key()
+    with open(path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+    events = manifest.get("events", [])
+    problems, prev = [], GENESIS_LINK
+    if manifest.get("link_algorithm") != LINK_ALGORITHM:
+        problems.append(f"Unsupported link algorithm: {manifest.get('link_algorithm') or 'unkeyed SHA-256 (legacy)'}")
+    if manifest.get("ledger_key_id") and manifest["ledger_key_id"] != ledger_key_id(key):
+        problems.append("Manifest was sealed with a different ledger key")
+    for ev in events:
+        if ev.get("prev_link") != prev:
+            problems.append(f"Event {ev.get('seq')}: broken link to previous event")
+        if not hmac.compare_digest(_link_hash(ev, key), str(ev.get("link_hash", ""))):
+            problems.append(f"Event {ev.get('seq')}: link HMAC does not match (event altered or forged)")
+        if ev.get("status") == STATUS_MISMATCH:
+            problems.append(f"Event {ev.get('seq')}: recorded hash MISMATCH at stage {ev.get('stage')}")
+        prev = ev.get("link_hash", "")
+    if manifest.get("head_link_hash", GENESIS_LINK) != prev:
+        problems.append("Head link hash does not match the last event (events removed or appended)")
+    return {"manifest": path, "events": len(events), "verified": not problems, "problems": problems}
+
+
+# ── Model integrity ───────────────────────────────────────────────────────────
+class ModelIntegrityError(Exception):
+    """Raised when a model file is not pinned or its hash differs from the pinned hash."""
+
+
+def pin_model_hashes(model_dir: str = None, out_path: str = MODEL_HASHES_PATH) -> dict:
+    """Record the SHA-256 of every .pkl model (run after (re)training a model)."""
+    model_dir = model_dir or os.path.dirname(out_path)
+    pins = {name: hash_file(os.path.join(model_dir, name))["sha256"]
+            for name in sorted(os.listdir(model_dir)) if name.endswith(".pkl")}
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump({"algorithm": "SHA-256", "pinned_utc": _utc_now(), "models": pins}, f, indent=2)
+        f.write("\n")
+    return pins
+
+
+def load_verified_model(path: str, pins_path: str = MODEL_HASHES_PATH):
+    """
+    Read a pickled model once, check its SHA-256 against the pinned value, and
+    unpickle those same verified bytes (no window to swap the file in between).
+    Returns (model, sha256).
+    """
+    import joblib
+    name = os.path.basename(path)
+    if not os.path.isfile(pins_path):
+        raise ModelIntegrityError(f"Model hash pin file missing: {pins_path}. "
+                                  "Run: python scripts/pin_model_hashes.py")
+    with open(pins_path, "r", encoding="utf-8") as f:
+        pinned = json.load(f).get("models", {}).get(name)
+    if not pinned:
+        raise ModelIntegrityError(f"{name} has no pinned hash in {os.path.basename(pins_path)}")
+    with open(path, "rb") as f:
+        data = f.read()
+    actual = hashlib.sha256(data).hexdigest()
+    if not hmac.compare_digest(actual, pinned.lower()):
+        raise ModelIntegrityError(f"{name} SHA-256 {actual} does not match pinned {pinned} "
+                                  "- the model file was modified or replaced")
+    return joblib.load(io.BytesIO(data)), actual
+
+
+if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[1] == "verify":
+        all_ok = True
+        for manifest_path in sys.argv[2:]:
+            res = verify_manifest(manifest_path)
+            all_ok &= res["verified"]
+            print(f"{'VERIFIED   ' if res['verified'] else 'COMPROMISED'}  {manifest_path}  ({res['events']} events)")
+            for problem in res["problems"]:
+                print(f"    - {problem}")
+        sys.exit(0 if all_ok else 1)
+    print("Usage: python evidence_integrity.py verify <custody_manifest.json> [...]")
+    sys.exit(2)

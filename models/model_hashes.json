@@ -1,0 +1,9 @@
+{
+  "algorithm": "SHA-256",
+  "pinned_utc": "2026-10-08 16:25:07 UTC",
+  "models": {
+    "isolation_forest.pkl": "334f8164fdaa9e9420fd805ab72d41a7434697ccb74e42b525a3bade7ced07f3",
+    "multiclass_random_forest.pkl": "e96be8589d4f019231e1b6d55cca0da94d0446c59b69b2174b745e178b55d65a",
+    "random_forest_model.pkl": "344ec951a2d5b11b1ef5d733676dc12fb7c3c1a863f85b6ff501a415804313eb"
+  }
+}

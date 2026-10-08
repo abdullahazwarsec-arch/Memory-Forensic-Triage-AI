@@ -50,7 +50,7 @@ If any re-computed hash does not match the acquisition hash, analysis and report
 Memory_Forensics_Project/
 ├── app.py                      # Main Streamlit dashboard (case sessions, triage, XAI, reporting)
 ├── memdump_extractor.py        # Volatility 3 memory dump → 55-feature CSV extractor (also a CLI)
-├── evidence_integrity.py       # Hashing, tamper-evident custody ledger, manifests, sidecars
+├── evidence_integrity.py       # Hashing, HMAC custody ledger, manifest verifier, model hash pinning
 ├── ui_theme.py                 # Dashboard theme and reusable UI components
 ├── run_app.bat                 # Double-click launcher for Windows
 ├── requirements.txt            # Python dependencies
@@ -118,6 +118,7 @@ pip install -r requirements.txt
 python scripts/train_model.py
 python scripts/evaluate_model.py
 python scripts/explain_model.py
+python scripts/pin_model_hashes.py   # re-pin model hashes after any re-training, then commit models/model_hashes.json
 ```
 
 4. Run the dashboard — double-click `run_app.bat`, or:
@@ -164,11 +165,18 @@ Every artefact is fingerprinted with SHA-256 and MD5 and re-verified at each sta
 | Pre-report | Everything re-hashed before the PDF is built |
 | Report | PDF hash recorded in the ledger, audit log and a `.sha256` sidecar |
 
-Each ledger entry records the analyst and stores the hash of the previous entry, so editing any recorded entry breaks the chain and is detected. Per-case records are kept in `outputs/cases/<case>/`:
+Each ledger entry records the analyst and is chained to the previous entry by an **HMAC-SHA256** link keyed with a secret ledger key, so editing any recorded entry breaks the chain, and the chain cannot be rebuilt without the key. The key is created on first run at `keys/ledger_hmac.key` (git-ignored, write-protected) or can be supplied as 64+ hex characters in the `FORENSICS_LEDGER_KEY` environment variable. Back it up securely — manifests sealed with a lost key can no longer be verified. Per-case records are kept in `outputs/cases/<case>/`:
 - `case.json` — sessions (analyst, opened/closed times) and evidence items
 - `<evidence-id>/custody_manifest.json` — the full ledger for that evidence item
 
-Any file can be verified independently with `certutil -hashfile <file> SHA256` (Windows) or `sha256sum <file>`.
+Any file can be verified independently with `certutil -hashfile <file> SHA256` (Windows) or `sha256sum <file>`. A custody manifest is re-verified (every HMAC link recomputed) with:
+
+```bash
+python evidence_integrity.py verify outputs/cases/<case>/<evidence-id>/custody_manifest.json
+```
+
+### Model integrity
+Models are pickle files, and unpickling a tampered file can execute code. The dashboard therefore reads each model once, checks its SHA-256 against `models/model_hashes.json`, and only then unpickles those verified bytes. An unpinned or modified classifier stops the dashboard; an unverified Isolation Forest is disabled with a warning. Both outcomes are written to the audit log.
 
 ## Memory Dump Feature Extraction
 `memdump_extractor.py` runs `windows.info` followed by 9 Volatility 3 plugins (`pslist`, `dlllist`, `handles`, `ldrmodules`, `malfind`, `psxview`, `modules`, `svcscan`, `callbacks`) and converts their output into the 55 CIC-MalMem2022 features. Volatility 3 lacks some checks used to build the original dataset, so a few features are approximations:
@@ -192,8 +200,8 @@ These are findings from testing the current models. They are documented so resul
 - **Optimistic accuracy.** The 100% test accuracy comes from a random train/test split. Each malware sample has ~10 near-identical snapshots and the dataset contains 534 duplicate rows, so near-copies appear in both train and test.
 - **Shortcut learning.** Only 11 service/module/callback count features reach 99.99% accuracy, and benign `svcscan.nservices` only ranges from 388 to 395, because the benign snapshots come from essentially one machine configuration. The model largely learns "differs from that benign machine" rather than malware behaviour. As a result, some benign-labelled sample profiles score as high risk, and real dumps from other Windows versions can be misjudged.
 - **Explanations reflect this bias.** SHAP/LIME correctly show that service and driver counts drive the verdict; they explain the model, not ground truth.
-- **Custody ledger is tamper-evident, not tamper-proof.** Someone with full file access could rebuild the whole chain; there is no digital signature or trusted timestamp yet.
-- **No authentication.** Streamlit serves on all network interfaces by default; restrict it to `localhost` or add access control before using real evidence.
+- **Custody ledger is keyed, not signed.** Rebuilding the chain requires the ledger key, but anyone who can read `keys/ledger_hmac.key` could still forge a ledger; there is no asymmetric signature or trusted timestamp yet. Model pins protect against replaced model files, not against someone who can also edit `model_hashes.json` and the code.
+- **No authentication.** The dashboard is bound to `localhost` (`.streamlit/config.toml`); the analyst name is self-declared. Add access control before exposing it beyond the examiner's machine.
 - Volatility symbol downloads require internet on first use; uploaded dumps are held in memory (use the path option for large dumps); Windows images only.
 
 ## Future Work

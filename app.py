@@ -16,7 +16,6 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import joblib
 import shap
 from lime.lime_tabular import LimeTabularExplainer
 
@@ -306,15 +305,29 @@ def load_rf_model():
     if not os.path.exists(MODEL_PATH):
         st.error(f"Model not found at: {MODEL_PATH}")
         st.stop()
-    return joblib.load(MODEL_PATH)
+    try:
+        model, sha256 = ei.load_verified_model(MODEL_PATH)
+    except ei.ModelIntegrityError as e:
+        logger.error(f"MODEL INTEGRITY FAILURE | {e}")
+        st.error(f"**Model integrity check failed — refusing to load the classifier.** {e}", icon=":material/gpp_bad:")
+        st.stop()
+    logger.info(f"MODEL VERIFIED | {os.path.basename(MODEL_PATH)} | SHA256={sha256}")
+    return model
 
 
 @st.cache_resource
 def load_iso_model():
-    """Load the Isolation Forest anomaly detector (optional — won't crash if missing)."""
-    if os.path.exists(ISO_PATH):
-        return joblib.load(ISO_PATH)
-    return None   # Dashboard still works without it
+    """Load the Isolation Forest anomaly detector (optional — won't crash if missing or unverified)."""
+    if not os.path.exists(ISO_PATH):
+        return None   # Dashboard still works without it
+    try:
+        model, sha256 = ei.load_verified_model(ISO_PATH)
+    except ei.ModelIntegrityError as e:
+        logger.error(f"MODEL INTEGRITY FAILURE | {e} | zero-day layer disabled")
+        st.warning(f"Isolation Forest not loaded (integrity check failed): {e}", icon=":material/gpp_maybe:")
+        return None
+    logger.info(f"MODEL VERIFIED | {os.path.basename(ISO_PATH)} | SHA256={sha256}")
+    return model
 
 
 @st.cache_data
@@ -893,7 +906,9 @@ def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.
         story.append(Paragraph(
             "Every artefact handled by the tool was hashed (SHA-256) when first received and re-hashed at each "
             "processing stage. MATCH means the recomputed hash equals the hash recorded at acquisition. Each "
-            "ledger entry is chained to the previous entry's hash, so any alteration of the ledger is detectable.",
+            "ledger entry is chained to the previous entry by an HMAC-SHA256 link keyed with the lab's secret "
+            f"ledger key (key ID {xml_esc(ei.ledger_key_id())}), so the ledger cannot be altered and re-chained "
+            "without that key.",
             cell_style
         ))
         story.append(Spacer(1, 4))

@@ -1,4 +1,8 @@
 [server]
+# Serve only on this machine. Evidence and the local-path input must not be
+# reachable from the network (Streamlit otherwise listens on all interfaces).
+address = "localhost"
+
 # Allow raw memory dumps to be uploaded (size in MB). Larger dumps can be
 # analysed by entering their local path instead of uploading.
 maxUploadSize = 8192

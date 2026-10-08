@@ -14,3 +14,6 @@ outputs/cases/
 
 # Hash sidecars of generated reports (the PDFs themselves are not committed)
 outputs/*.pdf.sha256
+
+# Secret custody-ledger HMAC key (generated on first run; never commit or share)
+keys/
