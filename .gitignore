@@ -21,3 +21,7 @@ keys/
 # Live audit log and its keyed head file (local evidence records, not source code)
 logs/*.log
 logs/*.head
+
+# Archived audit logs (local evidence records)
+logs/archive/
+logs/*.lock

@@ -36,6 +36,7 @@ ACCOUNT_EVENTS = {
     "USER_DISABLED":          "🚫 User disabled",
     "USER_ENABLED":           "✔️ User enabled",
     "USER_UNLOCKED":          "🔓 User unlocked",
+    "AUDIT_LOG_ARCHIVED":     "🗄️ Audit log archived",
 }
 ROLE_LABELS = {"admin": "Administrator", "analyst": "Analyst"}
 
@@ -137,13 +138,14 @@ def render_password_change(user: dict, forced: bool = False):
 
 
 # ── Audit log data ────────────────────────────────────────────────────────────
-@st.cache_data(ttl=5, show_spinner=False)
-def _audit_frame(path: str, mtime: float):  # mtime is part of the cache key
+def _rows(path: str, log_name: str, seq_start: int):
     check = audit_log.verify_log(path)
     rows = []
-    for e in audit_log.read_entries(path, check["bad_lines"]):
+    for i, e in enumerate(audit_log.read_entries(path, check["bad_lines"])):
         f = e["fields"]
         rows.append({
+            "Seq": seq_start + i,
+            "Log": log_name,
             "Line": e["line"],
             "Time": pd.to_datetime(e["timestamp"], format="%Y-%m-%d %H:%M:%S", errors="coerce"),
             "Level": e["level"],
@@ -156,13 +158,76 @@ def _audit_frame(path: str, mtime: float):  # mtime is part of the cache key
             "Message": e["message"],
             "Chain": e["chain"],
         })
-    return pd.DataFrame(rows), check
+    return rows, check
+
+
+@st.cache_data(ttl=5, show_spinner=False)
+def _audit_frame(path: str, stamp: tuple):  # stamp (mtimes) is part of the cache key
+    """Archived logs (oldest first) followed by the active log, each verified on its own."""
+    archives, rows = audit_log.list_archives(path), []
+    for a in archives:
+        if os.path.isfile(a["path"]):
+            r, _ = _rows(a["path"], a["archived_log"], len(rows))
+            rows += r
+    r, check = _rows(path, "current", len(rows))
+    rows += r
+    return pd.DataFrame(rows), check, archives
 
 
 def load_audit():
     if not AUDIT_LOG_PATH or not os.path.isfile(AUDIT_LOG_PATH):
-        return pd.DataFrame(), None
-    return _audit_frame(AUDIT_LOG_PATH, os.path.getmtime(AUDIT_LOG_PATH))
+        return pd.DataFrame(), None, []
+    archive_dir = os.path.join(os.path.dirname(os.path.abspath(AUDIT_LOG_PATH)), "archive")
+    stamp = (os.path.getmtime(AUDIT_LOG_PATH),
+             tuple(sorted(os.listdir(archive_dir))) if os.path.isdir(archive_dir) else ())
+    return _audit_frame(AUDIT_LOG_PATH, stamp)
+
+
+def _render_archive_controls(check: dict, archives: list):
+    """Explain a failed check and let an administrator archive the log and start a new chain."""
+    me = st.session_state["auth_user"]
+    duplicates = [p for p in check["problems"] if "duplicate of line" in p]
+    others = [p for p in check["problems"] if p not in duplicates]
+    if duplicates and all("head records" in p for p in others):
+        st.info(f"**Diagnosis:** all {len(duplicates)} failing entries are exact duplicates of the entry before "
+                "them — the same event was recorded by more than one log writer. No entry was altered. "
+                "This is fixed in the logger; archive this log to start a clean chain.", icon=":material/info:")
+    with st.expander("Archive this log and start a new chain", icon=":material/inventory_2:", expanded=True):
+        st.caption("The current log is moved unchanged to `logs/archive/` with a verification report, and a new "
+                   "chain starts whose first entry records the archived file's SHA-256. Nothing is deleted or "
+                   "re-signed. This action is recorded.")
+        with st.form("archive_log", border=False):
+            reason = st.text_input("Reason (recorded in the new chain)",
+                                   value=("Duplicate entries written by more than one log writer; archived "
+                                          "unchanged" if duplicates else ""))
+            if st.form_submit_button("Archive & start new chain", type="primary", icon=":material/archive:"):
+                try:
+                    rep_ = audit_log.archive_and_restart(AUDIT_LOG_PATH, reason, by=me["username"])
+                except ValueError as e:
+                    st.error(str(e))
+                else:
+                    auth.audit("AUDIT_LOG_ARCHIVED", me["username"], archive=rep_["archived_log"],
+                               status=rep_["status"], sha256=rep_["sha256"][:16])
+                    st.cache_data.clear()
+                    st.rerun()
+
+
+def _render_archive_list(archives: list):
+    if not archives:
+        return
+    bad = sum(a["status"] != "VERIFIED" for a in archives)
+    with st.expander(f"Archived logs ({len(archives)}{f' · {bad} with a broken chain' if bad else ''})",
+                     icon=":material/inventory_2:"):
+        st.dataframe(pd.DataFrame([{
+            "Archived log": a["archived_log"],
+            "Archived": a["archived_local"],
+            "By": a["archived_by"],
+            "Status at archive": ("🟢 Verified" if a["status"] == "VERIFIED" else "🔴 Broken chain"),
+            "File unchanged since": "🟢 Yes" if a["unchanged_since_archive"] else "🔴 NO — modified",
+            "Reason": a["reason"],
+            "SHA-256": a["sha256"],
+        } for a in archives]), hide_index=True, width="stretch")
+        st.caption("Entries from archived logs are included in the tables below (column “Log”).")
 
 
 CHAIN_LABELS = {"ok": "🟢 Verified", "legacy": "⚪ Pre-chain (anchored)", "broken": "🔴 TAMPERED"}
@@ -170,7 +235,7 @@ CHAIN_LABELS = {"ok": "🟢 Verified", "legacy": "⚪ Pre-chain (anchored)", "br
 
 def _event_table(df: pd.DataFrame, labels: dict, key: str, height: int = 460):
     view = df.assign(Event=df["Event"].map(labels).fillna(df["Event"]),
-                     Chain=df["Chain"].map(CHAIN_LABELS)).sort_values("Line", ascending=False)
+                     Chain=df["Chain"].map(CHAIN_LABELS)).sort_values("Seq", ascending=False)
     st.dataframe(
         view[["Time", "Event", "User", "Client", "Details", "Chain"]],
         hide_index=True, width="stretch", height=height,
@@ -203,7 +268,7 @@ def _date_filter(df: pd.DataFrame, key: str) -> pd.DataFrame:
 # ── Pages ─────────────────────────────────────────────────────────────────────
 def render_audit_page():
     ui.section("Audit log", "Sign-ins, sign-outs, account administration and every recorded triage event.", "policy")
-    df, check = load_audit()
+    df, check, archives = load_audit()
     if check is None or df.empty:
         ui.empty_state("receipt_long", "No audit records yet", "Events appear here as soon as anyone signs in.")
         return
@@ -215,6 +280,8 @@ def render_audit_page():
     else:
         st.error("**Audit log integrity check FAILED** — " + "; ".join(check["problems"][:4]),
                  icon=":material/gpp_bad:")
+        _render_archive_controls(check, archives)
+    _render_archive_list(archives)
 
     auth_df = df[df["Category"] == "AUTH"]
     signins = auth_df[auth_df["Event"].isin(SIGNIN_EVENTS)]
@@ -267,11 +334,12 @@ def render_audit_page():
             view = view[view["Level"].isin(levels)]
         if text:
             view = view[view["Message"].str.contains(text, case=False, regex=False)]
-        view = view.assign(Chain=view["Chain"].map(CHAIN_LABELS)).sort_values("Line", ascending=False)
+        view = view.assign(Chain=view["Chain"].map(CHAIN_LABELS)).sort_values("Seq", ascending=False)
         st.caption(f"{len(view):,} of {len(df):,} entries · `logs/triage_audit.log`")
-        st.dataframe(view[["Line", "Time", "Level", "Category", "Message", "Chain"]], hide_index=True,
+        st.dataframe(view[["Log", "Line", "Time", "Level", "Category", "Message", "Chain"]], hide_index=True,
                      width="stretch", height=520,
                      column_config={
+                         "Log": st.column_config.TextColumn(width=120),
                          "Line": st.column_config.NumberColumn(width=70),
                          "Time": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm:ss", width=170),
                          "Level": st.column_config.TextColumn(width=90),
@@ -377,13 +445,13 @@ def render_account_page():
         render_password_change(me)
     with c_hist, st.container(border=True):
         st.markdown("##### My recent sign-in activity")
-        df, _ = load_audit()
+        df, _, _ = load_audit()
         mine = df[(df["Category"] == "AUTH") & (df["User"] == me["username"]) &
                   df["Event"].isin(SIGNIN_EVENTS)] if not df.empty else df
         if mine.empty:
             st.caption("No activity recorded yet.")
         else:
-            st.dataframe(mine.sort_values("Line", ascending=False).head(15)
+            st.dataframe(mine.sort_values("Seq", ascending=False).head(15)
                          .assign(Event=lambda d: d["Event"].map(SIGNIN_EVENTS))[["Time", "Event", "Client", "Details"]],
                          hide_index=True, width="stretch",
                          column_config={"Time": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm:ss")})
