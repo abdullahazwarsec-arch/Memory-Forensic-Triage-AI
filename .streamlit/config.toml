@@ -12,14 +12,14 @@ maxUploadSize = 8192
 toolbarMode = "minimal"
 
 [theme]
-# "Black & Gold" theme (matches ui_theme.py tokens)
+# "Black & Baby Yellow" theme (matches ui_theme.py tokens)
 base = "dark"
-primaryColor = "#fcc21b"
+primaryColor = "#ffe680"
 backgroundColor = "#000000"
 secondaryBackgroundColor = "#131316"
 textColor = "#f5f5f5"
 borderColor = "#26262c"
-linkColor = "#fcc21b"
+linkColor = "#ffe680"
 codeBackgroundColor = "#0e0e11"
 dataframeHeaderBackgroundColor = "#131316"
 showSidebarBorder = true

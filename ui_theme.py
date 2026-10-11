@@ -1,16 +1,19 @@
 """
-Black & Gold UI theme & components for the Streamlit dashboard.
+Black & baby-yellow UI theme & components for the Streamlit dashboard.
 
 Sleek, minimal look inspired by modern Framer sites: pure-black canvas with a
-soft golden glow, translucent glass cards, tight high-contrast typography
-(Plus Jakarta Sans), pill-shaped buttons/tabs with a yellow→amber gradient and
-Material Symbols icons. Monospace is kept for evidence data (hashes, metrics).
+soft warm glow, translucent glass cards, tight high-contrast typography
+(Plus Jakarta Sans), pill-shaped buttons/tabs in baby yellow, and macOS-style
+app icons: squircle tiles (superellipse mask) with a vertical gradient, glossy
+sheen, drop shadow and a filled glyph. Monospace is kept for evidence data (hashes, metrics).
 All HTML helpers flatten their markup so Markdown never turns indented lines
 into code blocks.
 """
 
 import re
+import math
 import html as _html
+from urllib.parse import quote
 import streamlit as st
 
 
@@ -23,9 +26,10 @@ BORDER_HI   = "#2d2d34"
 TEXT        = "#f5f5f5"
 TEXT_2      = "#b9b9c4"
 MUTED       = "#8a8a99"
-ACCENT      = "#fcc21b"     # gold
-ACCENT_DEEP = "#e48c15"     # amber
-ACCENT_SOFT = "#ffd970"     # pale gold for text on black (hashes, code)
+ACCENT      = "#ffe680"     # baby yellow
+ACCENT_DEEP = "#f5cf52"     # deeper butter yellow (gradient end)
+ACCENT_SOFT = "#fff3b0"     # pale yellow for text on black (hashes, code)
+INK         = "#2b2300"     # text/glyphs on yellow surfaces
 
 # Status (always paired with an icon + label, never colour alone).
 # Warning is orange, not yellow, so it never reads as the brand accent.
@@ -41,11 +45,27 @@ TONES = {
     "good":     (GOOD,     "rgba(74, 222, 128, 0.09)",  "rgba(74, 222, 128, 0.32)"),
     "warning":  (WARNING,  "rgba(255, 138, 61, 0.10)",  "rgba(255, 138, 61, 0.36)"),
     "critical": (CRITICAL, "rgba(255, 95, 95, 0.10)",   "rgba(255, 95, 95, 0.40)"),
-    "accent":   (ACCENT,   "rgba(252, 194, 27, 0.10)",  "rgba(252, 194, 27, 0.38)"),
+    "accent":   (ACCENT,   "rgba(255, 230, 128, 0.10)", "rgba(255, 230, 128, 0.38)"),
     "neutral":  (TEXT_2,   "rgba(255, 255, 255, 0.05)", "rgba(255, 255, 255, 0.14)"),
 }
 
-GRADIENT = f"linear-gradient(135deg, #ffe066 0%, {ACCENT} 42%, {ACCENT_DEEP} 100%)"
+GRADIENT = f"linear-gradient(180deg, #fffbe0 0%, #fff0a3 36%, {ACCENT} 64%, {ACCENT_DEEP} 100%)"
+
+
+def _squircle_mask() -> str:
+    """Apple-style continuous-corner tile: superellipse |x|^5 + |y|^5 = 1 as an SVG mask."""
+    n, pts = 5, []
+    for deg in range(0, 360, 3):
+        t = math.radians(deg)
+        c, si = math.cos(t), math.sin(t)
+        pts.append(f"{50 + 50 * math.copysign(abs(c) ** (2 / n), c):.2f} "
+                   f"{50 + 50 * math.copysign(abs(si) ** (2 / n), si):.2f}")
+    svg = (f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>"
+           f"<path d='M{' L'.join(pts)}Z'/></svg>")
+    return f'url("data:image/svg+xml,{quote(svg)}")'
+
+
+SQUIRCLE = _squircle_mask()
 
 
 def esc(value) -> str:
@@ -69,6 +89,12 @@ def _glyph(value: str, size: str = None) -> str:
     return icon(value, size) if re.fullmatch(r"[a-z0-9_]+", value or "") else esc(value)
 
 
+def mac_icon(name: str, size: int = 42) -> str:
+    """macOS-style app icon: baby-yellow squircle tile with a filled glyph."""
+    glyph = icon(name) if re.fullmatch(r"[a-z0-9_]+", name or "") else f'<span class="fx-emoji">{esc(name)}</span>'
+    return f'<span class="fx-mac" style="--s:{size}px"><span class="fx-mac-tile">{glyph}</span></span>'
+
+
 # ── Global stylesheet ─────────────────────────────────────────────────────────
 def inject_theme():
     st.markdown(
@@ -81,7 +107,8 @@ def inject_theme():
   --bg: {BG}; --surface: {SURFACE}; --surface-2: {SURFACE_2};
   --border: {BORDER}; --border-hi: {BORDER_HI};
   --text: {TEXT}; --text-2: {TEXT_2}; --muted: {MUTED};
-  --accent: {ACCENT}; --accent-deep: {ACCENT_DEEP}; --accent-soft: {ACCENT_SOFT};
+  --accent: {ACCENT}; --accent-deep: {ACCENT_DEEP}; --accent-soft: {ACCENT_SOFT}; --ink: {INK};
+  --squircle: {SQUIRCLE};
   --good: {GOOD}; --warning: {WARNING}; --critical: {CRITICAL};
   --gradient: {GRADIENT};
   --glass: rgba(255, 255, 255, 0.025); --glass-border: rgba(255, 255, 255, 0.08);
@@ -90,16 +117,68 @@ def inject_theme():
   --sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
 }}
 
-/* ── Canvas: black with a soft golden glow and a faint dot grid ── */
-.stApp {{
-  background-color: var(--bg) !important;
+/* ── Canvas: live animated background (CSS only, GPU transforms) ──
+   1 aurora glows  2 drifting dot grid  3 rising "memory bits"  4 scan beam */
+.stApp {{ background: var(--bg) !important; color: var(--text) !important; isolation: isolate; }}
+.stApp::before, .stApp::after,
+[data-testid="stAppViewContainer"]::before, [data-testid="stAppViewContainer"]::after {{
+  content: ""; position: fixed; pointer-events: none; z-index: -1; will-change: transform, opacity;
+}}
+.stApp::before {{
+  inset: -25%;
+  background:
+    radial-gradient(28% 32% at 30% 22%, rgba(255, 230, 128, 0.16), transparent 70%),
+    radial-gradient(26% 30% at 72% 30%, rgba(245, 207, 82, 0.10), transparent 70%),
+    radial-gradient(30% 34% at 55% 78%, rgba(255, 243, 176, 0.07), transparent 70%);
+  animation: fx-aurora 26s ease-in-out infinite alternate;
+}}
+@keyframes fx-aurora {{
+  0%   {{ transform: translate3d(-4%, -2%, 0) rotate(0deg) scale(1); }}
+  50%  {{ transform: translate3d(3%, 3%, 0) rotate(8deg) scale(1.08); }}
+  100% {{ transform: translate3d(-2%, 5%, 0) rotate(-6deg) scale(1.02); }}
+}}
+.stApp::after {{
+  inset: -64px;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1.2px);
+  background-size: 32px 32px;
+  -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 40%, #000 30%, transparent 85%);
+  mask-image: radial-gradient(ellipse 75% 70% at 50% 40%, #000 30%, transparent 85%);
+  animation: fx-grid 14s linear infinite;
+}}
+@keyframes fx-grid {{ from {{ transform: translate3d(0, 0, 0); }} to {{ transform: translate3d(32px, 32px, 0); }} }}
+[data-testid="stAppViewContainer"] {{ isolation: isolate; background: transparent !important; }}
+[data-testid="stAppViewContainer"]::before {{
+  left: 0; right: 0; top: 0; height: calc(100vh + 320px);
   background-image:
-    radial-gradient(ellipse 70% 45% at 50% -12%, rgba(252, 194, 27, 0.13), transparent 70%),
-    radial-gradient(ellipse 40% 35% at 100% 100%, rgba(228, 140, 21, 0.06), transparent 70%),
-    radial-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px) !important;
-  background-size: auto, auto, 26px 26px !important;
-  background-attachment: fixed !important;
-  color: var(--text) !important;
+    radial-gradient(circle at 12% 18%, rgba(255, 230, 128, 0.55) 0 1.3px, transparent 2px),
+    radial-gradient(circle at 38% 64%, rgba(255, 230, 128, 0.35) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 63% 9%,  rgba(255, 243, 176, 0.45) 0 1.2px, transparent 1.8px),
+    radial-gradient(circle at 81% 47%, rgba(255, 230, 128, 0.30) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 24% 88%, rgba(255, 243, 176, 0.40) 0 1.1px, transparent 1.7px),
+    radial-gradient(circle at 92% 82%, rgba(255, 230, 128, 0.50) 0 1.3px, transparent 2px),
+    radial-gradient(circle at 52% 36%, rgba(255, 255, 255, 0.25) 0 0.9px, transparent 1.4px);
+  background-size: 320px 320px;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 25%, #000 70%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 25%, #000 70%, transparent 100%);
+  animation: fx-rise 26s linear infinite;
+}}
+@keyframes fx-rise {{ from {{ transform: translate3d(0, 0, 0); }} to {{ transform: translate3d(0, -320px, 0); }} }}
+[data-testid="stAppViewContainer"]::after {{
+  left: 0; right: 0; top: 0; height: 38vh;
+  background: linear-gradient(180deg, transparent 0%, rgba(255, 230, 128, 0.035) 70%, rgba(255, 230, 128, 0.08) 99%, transparent 100%);
+  animation: fx-scan 11s cubic-bezier(.45, 0, .55, 1) infinite;
+}}
+@keyframes fx-scan {{
+  0%   {{ transform: translate3d(0, -40vh, 0); opacity: 0; }}
+  12%  {{ opacity: 1; }}
+  70%  {{ opacity: 1; }}
+  100% {{ transform: translate3d(0, 110vh, 0); opacity: 0; }}
+}}
+[data-testid="stMain"], [data-testid="stBottomBlockContainer"] {{ background: transparent !important; }}
+@media (prefers-reduced-motion: reduce) {{
+  .stApp::before, .stApp::after,
+  [data-testid="stAppViewContainer"]::before, [data-testid="stAppViewContainer"]::after {{ animation: none !important; }}
+  [data-testid="stAppViewContainer"]::after {{ display: none; }}
 }}
 ::selection {{ background: var(--accent); color: #000; }}
 * {{ scrollbar-width: thin; scrollbar-color: #2a2a30 transparent; }}
@@ -114,8 +193,8 @@ html, body, .stApp, p, li, label, div, input, textarea, button {{ font-family: v
 .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5 {{ font-family: var(--sans) !important; letter-spacing: -0.03em !important; font-weight: 800 !important; }}
 code, pre, .mono {{ font-family: var(--mono) !important; }}
 :not(pre) > code {{
-  background: rgba(252, 194, 27, 0.08) !important; color: var(--accent-soft) !important;
-  border: 1px solid rgba(252, 194, 27, 0.18) !important; border-radius: 7px !important;
+  background: rgba(255, 230, 128, 0.08) !important; color: var(--accent-soft) !important;
+  border: 1px solid rgba(255, 230, 128, 0.18) !important; border-radius: 7px !important;
   padding: 0.1rem 0.42rem !important; font-size: 0.86em !important; overflow-wrap: anywhere;
 }}
 .fx-icon {{
@@ -124,6 +203,47 @@ code, pre, .mono {{ font-family: var(--mono) !important; }}
   display: inline-block; vertical-align: middle; -webkit-font-smoothing: antialiased;
   font-variation-settings: 'FILL' 0, 'wght' 450, 'GRAD' 0, 'opsz' 24;
 }}
+/* ── macOS-style app icon tiles ── */
+.fx-mac {{
+  display: inline-grid; flex: 0 0 auto; vertical-align: middle;
+  filter: drop-shadow(0 7px 12px rgba(0, 0, 0, 0.6)) drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.45));
+  transition: transform .25s cubic-bezier(.2, .9, .3, 1.4);
+}}
+.fx-mac:hover {{ transform: translateY(-2px) scale(1.04); }}
+.fx-mac-tile {{
+  position: relative; width: var(--s, 42px); height: var(--s, 42px); display: grid; place-items: center;
+  -webkit-mask: var(--squircle) center / 100% 100% no-repeat; mask: var(--squircle) center / 100% 100% no-repeat;
+  background: var(--gradient); color: var(--ink);
+  box-shadow: inset 0 calc(var(--s, 42px) * 0.04) 0 rgba(255, 255, 255, 0.9),
+              inset 0 calc(var(--s, 42px) * -0.08) calc(var(--s, 42px) * 0.14) rgba(150, 110, 0, 0.28);
+}}
+.fx-mac-tile::before {{
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.08) 46%, transparent 52%);
+}}
+.fx-mac-tile .fx-icon {{
+  position: relative; font-size: calc(var(--s, 42px) * 0.56); color: var(--ink);
+  font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 40;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+}}
+.fx-mac-tile .fx-emoji {{ position: relative; font-size: calc(var(--s, 42px) * 0.55); }}
+
+/* Streamlit's own Material icons: filled, SF-Symbols-like */
+[data-testid="stIconMaterial"] {{ font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24 !important; }}
+/* Top-nav icons as small macOS tiles; the current page lights up */
+[data-testid="stTopNavLink"] [data-testid="stIconMaterial"] {{
+  display: inline-flex !important; align-items: center; justify-content: center;
+  width: 26px !important; min-width: 26px !important; height: 26px !important; flex: 0 0 26px !important;
+  font-size: 16px !important; line-height: 1 !important; overflow: hidden;
+  border-radius: 8px; color: var(--accent) !important; margin-right: 0.2rem;
+  background: linear-gradient(180deg, #34343c 0%, #1b1b20 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 2px 6px rgba(0, 0, 0, 0.55);
+}}
+[data-testid="stTopNavLink"][aria-current="page"] [data-testid="stIconMaterial"] {{
+  background: var(--gradient); color: var(--ink) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 3px 10px -2px rgba(255, 230, 128, 0.55);
+}}
+
 [data-testid="stMainBlockContainer"], .block-container {{ padding-top: 5.4rem !important; padding-bottom: 4rem !important; max-width: 1320px !important; }}
 
 /* ── Header bar & top navigation (pill links) ── */
@@ -138,13 +258,14 @@ header[data-testid="stHeader"] {{
 [data-testid="stTopNavLink"] span {{ color: var(--text-2) !important; font-weight: 600 !important; }}
 [data-testid="stTopNavLink"]:hover {{ background: rgba(255, 255, 255, 0.05) !important; border-color: rgba(255, 255, 255, 0.10); }}
 [data-testid="stTopNavLink"][aria-current="page"] {{
-  background: rgba(252, 194, 27, 0.12) !important; border-color: rgba(252, 194, 27, 0.40);
+  background: rgba(255, 230, 128, 0.12) !important; border-color: rgba(255, 230, 128, 0.40);
 }}
 [data-testid="stTopNavLink"][aria-current="page"] span {{ color: var(--accent) !important; }}
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {{
-  background: linear-gradient(180deg, #070708 0%, #000 100%) !important;
+  background: linear-gradient(180deg, rgba(8, 8, 10, 0.86) 0%, rgba(0, 0, 0, 0.9) 100%) !important;
+  backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%);
   border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
 }}
 [data-testid="stSidebar"] .block-container {{ padding-top: 1.5rem !important; }}
@@ -164,15 +285,15 @@ header[data-testid="stHeader"] {{
 }}
 .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"],
 [data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"] {{
-  background: var(--gradient) !important; border: 1px solid rgba(255, 224, 102, 0.55) !important; color: #0a0a0a !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 26px -10px rgba(252, 194, 27, 0.75) !important;
+  background: var(--gradient) !important; border: 1px solid rgba(255, 243, 176, 0.55) !important; color: var(--ink) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 26px -10px rgba(255, 230, 128, 0.75) !important;
 }}
 .stButton > button[kind="primary"] *, .stDownloadButton > button[kind="primary"] *,
-[data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"] * {{ color: #0a0a0a !important; }}
+[data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"] * {{ color: var(--ink) !important; }}
 .stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover,
 [data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"]:hover {{
   transform: translateY(-2px); filter: brightness(1.05);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 34px -10px rgba(252, 194, 27, 0.9) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 34px -10px rgba(255, 230, 128, 0.9) !important;
 }}
 .stButton > button:not([kind="primary"]), .stDownloadButton > button:not([kind="primary"]),
 [data-testid="stFormSubmitButton"] > button:not([kind="primaryFormSubmit"]) {{
@@ -180,7 +301,7 @@ header[data-testid="stHeader"] {{
 }}
 .stButton > button:not([kind="primary"]):hover, .stDownloadButton > button:not([kind="primary"]):hover,
 [data-testid="stFormSubmitButton"] > button:not([kind="primaryFormSubmit"]):hover {{
-  border-color: var(--accent) !important; background: rgba(252, 194, 27, 0.07) !important; transform: translateY(-2px);
+  border-color: var(--accent) !important; background: rgba(255, 230, 128, 0.07) !important; transform: translateY(-2px);
 }}
 .stButton > button:not([kind="primary"]):hover *, .stDownloadButton > button:not([kind="primary"]):hover * {{ color: var(--accent) !important; }}
 .stButton > button:disabled {{ opacity: 0.4 !important; transform: none !important; }}
@@ -200,12 +321,12 @@ div[data-baseweb="select"] > div, [data-testid="stTextInput"] input, [data-testi
 [data-testid="stTextInput"] div:focus-within {{ border-color: var(--accent) !important; }}
 div[data-baseweb="popover"] ul[role="listbox"] {{ background: #0e0e11 !important; border: 1px solid #26262c !important; border-radius: 12px !important; }}
 li[role="option"] {{ font-size: 0.97rem !important; }}
-li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(252, 194, 27, 0.12) !important; }}
+li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(255, 230, 128, 0.12) !important; }}
 [data-testid="stFileUploader"] section {{
   background: var(--glass) !important; border: 1.5px dashed #34343c !important; border-radius: var(--radius) !important;
   transition: border-color .2s ease, background .2s ease;
 }}
-[data-testid="stFileUploader"] section:hover {{ border-color: var(--accent) !important; background: rgba(252, 194, 27, 0.04) !important; }}
+[data-testid="stFileUploader"] section:hover {{ border-color: var(--accent) !important; background: rgba(255, 230, 128, 0.04) !important; }}
 
 /* ── Tabs: pill track ── */
 [data-testid="stTabs"] [role="tablist"] {{
@@ -221,8 +342,8 @@ li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(252, 194, 
 [data-testid="stTabs"] [role="tab"] p {{ font-size: 0.97rem !important; font-weight: 700 !important; color: var(--muted) !important; margin: 0 !important; }}
 [data-testid="stTabs"] [role="tab"]:hover {{ background: rgba(255, 255, 255, 0.05); }}
 [data-testid="stTabs"] [role="tab"]:hover p {{ color: var(--text) !important; }}
-[data-testid="stTabs"] [role="tab"][aria-selected="true"] {{ background: var(--gradient) !important; box-shadow: 0 6px 18px -8px rgba(252, 194, 27, 0.8); }}
-[data-testid="stTabs"] [role="tab"][aria-selected="true"] p {{ color: #0a0a0a !important; }}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] {{ background: var(--gradient) !important; box-shadow: 0 6px 18px -8px rgba(255, 230, 128, 0.8); }}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] p {{ color: var(--ink) !important; }}
 [data-testid="stTabPanel"] {{ padding-top: 1rem; }}
 
 /* ── Expanders, alerts, tables, containers ── */
@@ -249,19 +370,14 @@ footer {{ visibility: hidden !important; }}
   position: relative; overflow: hidden;
   display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
   padding: 1.5rem 1.7rem; margin-bottom: 1.3rem; border-radius: 24px;
-  background: linear-gradient(135deg, rgba(252, 194, 27, 0.10), rgba(255, 255, 255, 0.02) 50%);
-  border: 1px solid rgba(252, 194, 27, 0.18);
+  background: linear-gradient(135deg, rgba(255, 230, 128, 0.10), rgba(255, 255, 255, 0.02) 50%);
+  border: 1px solid rgba(255, 230, 128, 0.18);
 }}
 .fx-header::after {{
   content: ""; position: absolute; right: -80px; top: -120px; width: 320px; height: 320px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(252, 194, 27, 0.18), transparent 65%); pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 230, 128, 0.18), transparent 65%); pointer-events: none;
 }}
 .fx-brand {{ display: flex; align-items: center; gap: 1rem; position: relative; z-index: 1; }}
-.fx-logo {{
-  width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 1.7rem; color: #0a0a0a;
-  background: var(--gradient); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 10px 30px -10px rgba(252, 194, 27, 0.8);
-}}
-.fx-logo .fx-icon {{ color: #0a0a0a; font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }}
 .fx-eyebrow {{ font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; color: var(--accent); }}
 .fx-title {{ font-size: 1.9rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text); line-height: 1.1; }}
 .fx-title span {{ background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }}
@@ -288,18 +404,13 @@ footer {{ visibility: hidden !important; }}
 .fx-step-label {{ font-weight: 700; font-size: 0.96rem; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; }}
 .fx-step-sub {{ font-size: 0.78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 .fx-step.done .fx-step-num {{ background: rgba(74, 222, 128, 0.12); border-color: rgba(74, 222, 128, 0.5); color: var(--good); }}
-.fx-step.active {{ border-color: rgba(252, 194, 27, 0.5); box-shadow: 0 0 0 4px rgba(252, 194, 27, 0.06), 0 10px 30px -18px rgba(252, 194, 27, 0.8); }}
-.fx-step.active .fx-step-num {{ background: var(--gradient); border-color: transparent; color: #0a0a0a; }}
+.fx-step.active {{ border-color: rgba(255, 230, 128, 0.5); box-shadow: 0 0 0 4px rgba(255, 230, 128, 0.06), 0 10px 30px -18px rgba(255, 230, 128, 0.8); }}
+.fx-step.active .fx-step-num {{ background: var(--gradient); border-color: transparent; color: var(--ink); }}
 .fx-step.active .fx-step-label {{ color: var(--text); }}
 .fx-step.blocked {{ border-color: rgba(255, 95, 95, 0.45); }}
 .fx-step.blocked .fx-step-num {{ background: rgba(255, 95, 95, 0.14); border-color: var(--critical); color: var(--critical); }}
 
 .fx-section {{ display: flex; align-items: center; gap: 0.85rem; margin: 2.2rem 0 1rem 0; }}
-.fx-section-icon {{
-  width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; font-size: 1.25rem; color: var(--accent);
-  background: linear-gradient(135deg, rgba(252, 194, 27, 0.16), rgba(228, 140, 21, 0.06));
-  border: 1px solid rgba(252, 194, 27, 0.30);
-}}
 .fx-section-title {{ font-size: 1.5rem; font-weight: 800; color: var(--text); letter-spacing: -0.035em; line-height: 1.15; }}
 .fx-section-sub {{ font-size: 0.95rem; color: var(--muted); margin-top: 0.12rem; }}
 
@@ -310,10 +421,10 @@ footer {{ visibility: hidden !important; }}
   border: 1px solid var(--glass-border); border-radius: 18px; padding: 1rem 1.15rem;
   transition: border-color .2s ease, transform .2s ease;
 }}
-.fx-kpi:hover {{ border-color: rgba(252, 194, 27, 0.35); }}
+.fx-kpi:hover {{ border-color: rgba(255, 230, 128, 0.35); }}
 .fx-kpi::before {{
   content: ""; position: absolute; left: 1.15rem; right: 1.15rem; top: 0; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(252, 194, 27, 0.45), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 230, 128, 0.45), transparent);
 }}
 .fx-kpi-label {{ font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }}
 .fx-kpi-value {{ font-size: 1.45rem; font-weight: 800; color: var(--text); margin-top: 0.3rem; overflow-wrap: anywhere; line-height: 1.2; letter-spacing: -0.03em; }}
@@ -351,28 +462,34 @@ footer {{ visibility: hidden !important; }}
   display: flex; align-items: center; gap: 0.85rem; padding: 0.8rem 1.1rem; border-radius: var(--radius-sm);
   background: var(--glass); border: 1px solid var(--glass-border); margin-bottom: 0.55rem; transition: border-color .2s ease;
 }}
-.fx-action:hover {{ border-color: rgba(252, 194, 27, 0.3); }}
+.fx-action:hover {{ border-color: rgba(255, 230, 128, 0.3); }}
 .fx-action-num {{ flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 0.88rem; }}
 .fx-action-text {{ font-size: 0.99rem; color: var(--text); }}
 
 .fx-empty {{ text-align: center; padding: 2.8rem 1.5rem; }}
-.fx-empty-icon {{
-  width: 66px; height: 66px; margin: 0 auto 0.9rem; border-radius: 20px; display: grid; place-items: center;
-  font-size: 2rem; color: var(--accent);
-  background: linear-gradient(135deg, rgba(252, 194, 27, 0.16), rgba(228, 140, 21, 0.04));
-  border: 1px solid rgba(252, 194, 27, 0.28); box-shadow: 0 14px 36px -18px rgba(252, 194, 27, 0.7);
-}}
+.fx-empty-icon {{ display: flex; justify-content: center; margin-bottom: 1rem; }}
 .fx-empty-title {{ font-size: 1.25rem; font-weight: 800; color: var(--text); letter-spacing: -0.03em; }}
 .fx-empty-text {{ font-size: 0.97rem; color: var(--muted); max-width: 560px; margin: 0.4rem auto 0; }}
 
 .fx-side-brand {{ display: flex; align-items: center; gap: 0.75rem; }}
-.fx-side-brand .fx-logo {{ width: 42px; height: 42px; border-radius: 13px; font-size: 1.3rem; }}
 .fx-side-label {{ font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); margin: 1.4rem 0 0.55rem; }}
 .fx-side-row {{
   display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.58rem 0.85rem;
   border-radius: 12px; background: var(--glass); border: 1px solid var(--glass-border); margin-bottom: 0.42rem;
   font-size: 0.9rem; color: var(--text-2);
 }}
+.fx-prov-head {{ display: flex; align-items: center; gap: 0.75rem; margin: 0.3rem 0 0.85rem; }}
+.fx-prov-title {{ font-weight: 800; font-size: 1.12rem; letter-spacing: -0.025em; color: var(--text); }}
+.fx-prov-sub {{ color: var(--muted); font-size: 0.85rem; }}
+.fx-prov-strip {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; margin: -0.2rem 0 0.9rem; }}
+.fx-prov-strip > div {{
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.7rem 1rem; border-radius: 14px;
+  background: var(--glass); border: 1px solid var(--glass-border); min-width: 0;
+}}
+.fx-prov-strip .fx-icon {{ color: var(--accent); font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }}
+.fx-prov-strip span {{ font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }}
+.fx-prov-strip b {{ color: var(--text); font-weight: 700; overflow-wrap: anywhere; }}
+.fx-prov-strip em {{ font-style: normal; color: var(--muted); font-size: 0.86rem; }}
 .fx-check {{ display: flex; align-items: center; gap: 0.6rem; font-size: 0.94rem; color: var(--text-2); padding: 0.3rem 0; }}
 
 @media (max-width: 760px) {{
@@ -382,6 +499,7 @@ footer {{ visibility: hidden !important; }}
   .fx-verdict {{ grid-template-columns: 1fr; }}
   .fx-title {{ font-size: 1.45rem; }}
   .fx-header {{ padding: 1.2rem; }}
+  .fx-prov-strip {{ grid-template-columns: 1fr; }}
 }}
 </style>
         """,
@@ -397,8 +515,8 @@ def pill(text: str, tone: str = "accent", dot: bool = True) -> str:
             f'{d}{esc(text)}</span>')
 
 
-def logo(size_class: str = "") -> str:
-    return f'<div class="fx-logo {size_class}">{icon("memory")}</div>'
+def logo(size: int = 54) -> str:
+    return mac_icon("memory", size)
 
 
 def page_header(title_main: str, title_accent: str, subtitle: str, chips: list, eyebrow: str = "Memory forensics lab"):
@@ -420,7 +538,7 @@ def page_header(title_main: str, title_accent: str, subtitle: str, chips: list, 
 def sidebar_brand():
     render_html(f"""
     <div class="fx-side-brand">
-      {logo()}
+      {logo(42)}
       <div><div style="font-weight:800;font-size:1.18rem;letter-spacing:-0.03em;">MemTriage&nbsp;<span style="background:{GRADIENT};-webkit-background-clip:text;background-clip:text;color:transparent;">XAI</span></div>
       <div style="color:var(--muted);font-size:0.82rem;">Memory forensics lab</div></div>
     </div>
@@ -444,7 +562,7 @@ def section(title: str, subtitle: str = "", icon_name: str = "diamond"):
     sub = f'<div class="fx-section-sub">{esc(subtitle)}</div>' if subtitle else ""
     render_html(f"""
     <div class="fx-section">
-      <div class="fx-section-icon">{_glyph(icon_name)}</div>
+      {mac_icon(icon_name, 42)}
       <div><div class="fx-section-title">{esc(title)}</div>{sub}</div>
     </div>
     """)
@@ -488,7 +606,7 @@ def banner(icon_name: str, title: str, text: str, tone: str) -> str:
 def empty_state(icon_name: str, title: str, text: str):
     render_html(f"""
     <div class="fx-card fx-empty">
-      <div class="fx-empty-icon">{_glyph(icon_name)}</div>
+      <div class="fx-empty-icon">{mac_icon(icon_name, 68)}</div>
       <div class="fx-empty-title">{esc(title)}</div>
       <div class="fx-empty-text">{text}</div>
     </div>
