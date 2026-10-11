@@ -753,6 +753,19 @@ def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.
         [Paragraph("Source Evidence File", cell_bold), Paragraph(
             f"{xml_esc(result['source_file'])} ({xml_esc(integ.get('evidence_kind', ''))}, "
             f"{ei.format_size(integ.get('evidence_size', 0) or 0)})", cell_style)],
+        [Paragraph("Evidence Origin", cell_bold), Paragraph(xml_esc(
+            (lambda o: f"{o.get('source_device', 'N/A')}"
+                       f"{(' - custodian ' + o['custodian']) if o.get('custodian') else ''}"
+                       f"{(' - ' + o['location']) if o.get('location') else ''}")(
+                (integ.get("provenance") or {}).get("origin") or {})), cell_style)],
+        [Paragraph("Collected By / When / Tool", cell_bold), Paragraph(xml_esc(
+            (lambda o: f"{o.get('collected_by', 'N/A')} - {o.get('collected_at', 'N/A')} - "
+                       f"{o.get('acquisition_tool', 'N/A')}")(
+                (integ.get("provenance") or {}).get("origin") or {})), cell_style)],
+        [Paragraph("Prepared For", cell_bold), Paragraph(xml_esc(
+            (lambda r: f"{recipient_label(r)} - {r.get('purpose', 'N/A')}"
+                       f"{(' - ref ' + r['reference']) if r.get('reference') else ''}")(
+                (integ.get("provenance") or {}).get("prepared_for") or {})), cell_style)],
         [Paragraph("Evidence SHA-256", cell_bold), Paragraph(xml_esc(integ.get("evidence_sha256", "N/A")), hash_style)],
         [Paragraph("Evidence MD5", cell_bold), Paragraph(xml_esc(integ.get("evidence_md5", "N/A")), hash_style)],
     ]
@@ -1019,24 +1032,27 @@ def active_case():
     return st.session_state.get("case_session")
 
 
-def open_case_session(case_number: str, analyst: str, organisation: str, notes: str) -> dict:
+def open_case_session(case_number: str, analyst: str, organisation: str, notes: str, recipient: dict) -> dict:
     record = load_case_record(case_number)
     session = {
         "case_number":   case_number,
         "analyst":       analyst,
         "organisation":  organisation,
         "notes":         notes,
+        "recipient":     recipient,
         "session_id":    uuid.uuid4().hex[:8].upper(),
         "opened_local":  ei.local_timestamp(),
         "opened_utc":    ei._utc_now(),
         "prior_sessions": len(record["sessions"]),
     }
     record["sessions"].append({k: session[k] for k in
-                               ("session_id", "analyst", "organisation", "notes", "opened_local", "opened_utc")}
+                               ("session_id", "analyst", "organisation", "notes", "recipient",
+                                "opened_local", "opened_utc")}
                               | {"closed_local": None, "closed_utc": None})
     save_case_record(record)
     logger.info(f"CASE SESSION OPENED | CASE={case_number} | ANALYST={analyst} | ORG={organisation or '-'} | "
-                f"SESSION={session['session_id']} | OPENED={session['opened_local']} ({session['opened_utc']})")
+                f"SESSION={session['session_id']} | PREPARED_FOR={recipient_label(recipient)} | "
+                f"PURPOSE={recipient['purpose']} | OPENED={session['opened_local']} ({session['opened_utc']})")
     # A new session starts with a clean evidence workspace
     for key in ("cases", "evidence", "current_triage", "batch_summary", "last_source_file", "triage_blocked"):
         st.session_state.pop(key, None)
@@ -1069,6 +1085,7 @@ def register_evidence(chain):
         "sha256": ev.get("sha256"), "md5": ev.get("md5"), "size": ev.get("size"),
         "acquired_by": chain.analyst, "acquired_local": ei.local_timestamp(), "acquired_utc": ei._utc_now(),
         "session_id": (active_case() or {}).get("session_id"),
+        "provenance": chain.provenance,
     })
     save_case_record(record)
 
@@ -1085,7 +1102,11 @@ def render_case_session():
             ui.render_html(f"""
             <div class="fx-kpis">
               {ui.kpi("Case number", ui.esc(session['case_number']), mono=True, wide=True)}
-              {ui.kpi("Analyst", ui.esc(session['analyst']), session['organisation'] or "", small=True)}
+              {ui.kpi("Analyst", ui.esc(session['analyst']), ui.esc(session['organisation']), small=True)}
+              {ui.kpi("Prepared for", ui.esc((session.get('recipient') or {}).get('name', '—')),
+                      ui.esc(' · '.join(v for v in ((session.get('recipient') or {}).get('organisation'),
+                                                    (session.get('recipient') or {}).get('purpose')) if v)),
+                      small=True)}
               {ui.kpi("Session opened", ui.esc(session['opened_local']), ui.esc(session['opened_utc']), small=True)}
             </div>
             <div style="color: var(--muted); font-size: 0.9rem; margin-top: 0.5rem;">
@@ -1111,6 +1132,12 @@ def render_case_session():
             st.text_input("Analyst (signed-in account)", value=analyst, disabled=True,
                           help="Case actions are attributed to the authenticated user.")
             notes = st.text_input("Case notes", placeholder="e.g. Suspected ransomware on HR-PC-07")
+        st.markdown("**Prepared for** — who will receive the findings and evidence")
+        r1, r2, r3, r4 = st.columns([1.2, 1.2, 1.1, 0.9])
+        recipient_name = r1.text_input("Recipient *", placeholder="e.g. DCI Sarah Khan")
+        recipient_org  = r2.text_input("Recipient organisation", placeholder="e.g. Metro Police Cyber Unit")
+        purpose        = r3.selectbox("Purpose", PURPOSES)
+        reference      = r4.text_input("Request / reference no.", placeholder="e.g. REQ-2026-114")
         st.caption(f"The session start time is recorded automatically: **{ei.local_timestamp()}** "
                    f"(every custody event is also stamped in UTC).")
         submitted = st.form_submit_button("Open case session", type="primary", icon=":material/folder_open:")
@@ -1120,11 +1147,15 @@ def render_case_session():
         errors = []
         if not CASE_NUMBER_RE.match(case_number):
             errors.append("Enter a valid **case number** (3-40 characters: letters, digits, - _ . /).")
+        if len(recipient_name.strip()) < 3:
+            errors.append("Enter the **recipient** the evidence is prepared for (at least 3 characters).")
         if errors:
             for e in errors:
                 st.error(e, icon=":material/error:")
             return None
-        open_case_session(case_number, analyst, organisation.strip(), notes.strip())
+        open_case_session(case_number, analyst, organisation.strip(), notes.strip(), {
+            "name": " ".join(recipient_name.split()), "organisation": recipient_org.strip(),
+            "purpose": purpose, "reference": reference.strip()})
         st.toast(f"Case {case_number} opened by {analyst}", icon="📂")
         st.rerun()
     return None
@@ -1137,8 +1168,35 @@ def open_case(evidence_name: str, kind: str, hashes: dict, action: str, details:
                             evidence_id=ei.new_evidence_id(hashes["sha256"]), analyst=session["analyst"])
     chain.record("Acquisition", action, evidence_name, hashes, role="evidence",
                  details=f"{details} | Case session {session['session_id']} opened {session['opened_local']}".strip(" |"))
+    record_provenance(chain, st.session_state.get("pending_origin") or {}, session.get("recipient") or {})
     register_evidence(chain)
     return chain
+
+
+def recipient_label(recipient: dict) -> str:
+    name, org = recipient.get("name", ""), recipient.get("organisation", "")
+    return f"{name} ({org})" if name and org else name or org or "-"
+
+
+def origin_label(origin: dict) -> str:
+    who = f" (custodian: {origin['custodian']})" if origin.get("custodian") else ""
+    return f"{origin.get('source_device', '-')}{who}"
+
+
+def record_provenance(chain, origin: dict, recipient: dict):
+    """Lock where the evidence came from and who it is for into the custody ledger (tamper-evident)."""
+    chain.provenance = {"origin": dict(origin), "prepared_for": dict(recipient)}
+    payload = json.dumps(chain.provenance, sort_keys=True).encode("utf-8")
+    chain.record("Provenance", "Evidence origin and intended recipient recorded at acquisition",
+                 chain.evidence_name, {"sha256": hashlib.sha256(payload).hexdigest()}, role="provenance",
+                 details=(f"Origin: {origin_label(origin)} | Collected by {origin.get('collected_by', '-')} "
+                          f"at {origin.get('collected_at', '-')} | Location: {origin.get('location') or '-'} | "
+                          f"Tool: {origin.get('acquisition_tool', '-')} | Prepared for: {recipient_label(recipient)} "
+                          f"| Purpose: {recipient.get('purpose', '-')} | Ref: {recipient.get('reference') or '-'}"))
+    logger.info(f"PROVENANCE | CASE={chain.case_id} | EVIDENCE={chain.evidence_id} | "
+                f"SOURCE={origin_label(origin)} | COLLECTED_BY={origin.get('collected_by', '-')} | "
+                f"COLLECTED_AT={origin.get('collected_at', '-')} | TOOL={origin.get('acquisition_tool', '-')} | "
+                f"PREPARED_FOR={recipient_label(recipient)} | PURPOSE={recipient.get('purpose', '-')}")
 
 
 def case_path(chain, *parts) -> str:
@@ -1368,6 +1426,7 @@ def verify_before_analysis(ctx: dict, sample_df: pd.DataFrame, row_index: int, e
         "evidence_item_id": chain.evidence_id,
         "analyst":         chain.analyst,
         "organisation":    (active_case() or {}).get("organisation", ""),
+        "provenance":      chain.provenance,
         "session_id":      (active_case() or {}).get("session_id", ""),
         "session_opened":  (active_case() or {}).get("opened_local", ""),
         "evidence_name":   ctx["name"],
@@ -1407,6 +1466,16 @@ RISK_TONES = {"HIGH RISK": "critical", "SUSPICIOUS": "warning", "NORMAL": "good"
 RISK_ICONS = {"HIGH RISK": "⛔", "SUSPICIOUS": "⚠️", "NORMAL": "✅"}
 RISK_GLYPHS = {"HIGH RISK": "gpp_bad", "SUSPICIOUS": "warning", "NORMAL": "verified_user"}
 KIND_LABELS = {"memory-dump": "Memory dump", "csv-upload": "CSV upload", "csv-sample": "Sample profile"}
+ACQUISITION_TOOLS = ["DumpIt", "WinPmem", "FTK Imager", "Magnet RAM Capture", "Belkasoft RAM Capturer",
+                     "VM snapshot (VMware / VirtualBox / Hyper-V)", "Volatility feature export",
+                     "Research dataset", "Other"]
+PURPOSES = ["Incident response", "Internal investigation", "Law enforcement request", "Court / legal proceedings",
+            "Regulatory / compliance", "Client engagement", "Research / training", "Other"]
+SAMPLE_ORIGIN = {
+    "source_device": "CIC-MalMem2022 reference profile", "custodian": "Canadian Institute for Cybersecurity",
+    "location": "Public research dataset (UNB CIC)", "collected_by": "Dataset authors",
+    "acquisition_tool": "Research dataset",
+}
 
 SAMPLE_PRESETS = {
     "fresh_aggressive_ransomware.csv": "🔴 Active ransomware",
@@ -1499,6 +1568,17 @@ def render_evidence_summary(ctx: dict, df: pd.DataFrame):
     if csv:
         hashes += ui.hash_line(f"Derived CSV SHA-256 · {csv.get('artifact', '')}", csv.get("sha256", ""))
     ui.render_html(f'<div class="fx-card" style="margin: 0.8rem 0 0.9rem; padding-top: 0.4rem;">{hashes}</div>')
+    prov = chain.provenance or {}
+    if prov:
+        origin, recipient = prov.get("origin") or {}, prov.get("prepared_for") or {}
+        ui.render_html(
+            '<div class="fx-prov-strip">'
+            f'<div>{ui.icon("travel_explore")}<span>From</span><b>{ui.esc(origin_label(origin))}</b>'
+            f'<em>collected by {ui.esc(origin.get("collected_by", "-"))} · {ui.esc(origin.get("collected_at", "-"))}</em></div>'
+            f'<div>{ui.icon("outgoing_mail")}<span>For</span><b>{ui.esc(recipient_label(recipient))}</b>'
+            f'<em>{ui.esc(recipient.get("purpose", "-"))}'
+            f'{(" · ref " + ui.esc(recipient["reference"])) if recipient.get("reference") else ""}</em></div>'
+            '</div>')
 
 
 def render_feature_validation(ctx: dict, df: pd.DataFrame) -> bool:
@@ -1549,6 +1629,80 @@ def render_feature_validation(ctx: dict, df: pd.DataFrame) -> bool:
     return acknowledged
 
 
+def render_evidence_origin(source: str):
+    """
+    'Where did this evidence come from?' Returns the origin dict, or None while a
+    required field is missing. Values are locked into the ledger at acquisition.
+    """
+    defaults = SAMPLE_ORIGIN if source == "sample" else {}
+    k = lambda field: f"origin_{source}_{field}"
+    with st.expander("Evidence origin — where did this evidence come from?", icon=":material/travel_explore:",
+                     expanded=source != "sample"):
+        c1, c2, c3 = st.columns(3)
+        device    = c1.text_input("Source device / host *", value=defaults.get("source_device", ""),
+                                  placeholder="e.g. HR-PC-07 (Dell OptiPlex, S/N 4XK2)", key=k("device"))
+        custodian = c2.text_input("Owner / custodian", value=defaults.get("custodian", ""),
+                                  placeholder="e.g. John Smith, HR department", key=k("custodian"))
+        location  = c3.text_input("Collected from (location)", value=defaults.get("location", ""),
+                                  placeholder="e.g. HQ, 3rd floor, desk 14", key=k("location"))
+        c4, c5, c6, c7 = st.columns([1.3, 1, 0.8, 1.3])
+        collector = c4.text_input("Collected by *", value=defaults.get("collected_by", ""),
+                                  placeholder="Name of the person who acquired it", key=k("collector"))
+        day       = c5.date_input("Collection date", key=k("date"))
+        at        = c6.time_input("Time", key=k("time"))
+        tool      = c7.selectbox("Acquisition tool", ACQUISITION_TOOLS, key=k("tool"),
+                                 index=ACQUISITION_TOOLS.index(defaults.get("acquisition_tool", "DumpIt")))
+        notes     = st.text_input("Origin notes", placeholder="e.g. Seized under warrant 22/114; machine was running",
+                                  key=k("notes"))
+        st.caption("Recorded in the custody ledger when the evidence is acquired. Changes made afterwards apply "
+                   "to the next evidence item only.")
+    if len(device.strip()) < 2 or len(collector.strip()) < 2:
+        st.session_state.pop("pending_origin", None)
+        return None
+    collected_at = datetime.combine(day, at).astimezone()
+    origin = {
+        "source_device": device.strip(), "custodian": custodian.strip(), "location": location.strip(),
+        "collected_by": " ".join(collector.split()), "acquisition_tool": tool, "notes": notes.strip(),
+        "collected_at": ei.local_timestamp(collected_at),
+    }
+    st.session_state["pending_origin"] = origin
+    return origin
+
+
+def render_provenance_tab(evidence: dict):
+    prov = evidence["chain"].provenance or {}
+    origin, recipient = prov.get("origin") or {}, prov.get("prepared_for") or {}
+    if not origin and not recipient:
+        st.info("No provenance was recorded for this evidence item (acquired before provenance tracking).")
+        return
+    st.caption("Recorded at acquisition and sealed in the custody ledger (stage **Provenance**).")
+    c_from, c_to = st.columns(2, gap="large")
+    with c_from:
+        ui.render_html(f'<div class="fx-prov-head">{ui.mac_icon("travel_explore", 34)}'
+                       f'<div><div class="fx-prov-title">Where the evidence came from</div>'
+                       f'<div class="fx-prov-sub">Origin &amp; acquisition</div></div></div>')
+        ui.kpi_row([
+            ui.kpi("Source device / host", ui.esc(origin.get("source_device", "—")), small=True, wide=True),
+            ui.kpi("Owner / custodian", ui.esc(origin.get("custodian") or "—"), small=True),
+            ui.kpi("Location", ui.esc(origin.get("location") or "—"), small=True),
+            ui.kpi("Collected by", ui.esc(origin.get("collected_by", "—")), small=True),
+            ui.kpi("Collected at", ui.esc(origin.get("collected_at", "—")), small=True),
+            ui.kpi("Acquisition tool", ui.esc(origin.get("acquisition_tool", "—")), small=True, wide=True),
+        ])
+        if origin.get("notes"):
+            st.caption(f"Notes: {origin['notes']}")
+    with c_to:
+        ui.render_html(f'<div class="fx-prov-head">{ui.mac_icon("outgoing_mail", 34)}'
+                       f'<div><div class="fx-prov-title">Who it is prepared for</div>'
+                       f'<div class="fx-prov-sub">Recipient &amp; purpose</div></div></div>')
+        ui.kpi_row([
+            ui.kpi("Recipient", ui.esc(recipient.get("name") or "—"), small=True, wide=True),
+            ui.kpi("Organisation", ui.esc(recipient.get("organisation") or "—"), small=True),
+            ui.kpi("Purpose", ui.esc(recipient.get("purpose") or "—"), small=True),
+            ui.kpi("Reference", ui.esc(recipient.get("reference") or "—"), small=True, wide=True),
+        ])
+
+
 def render_ingestion():
     """Evidence intake. Returns the active evidence context, or None while waiting."""
     source = st.segmented_control(
@@ -1559,6 +1713,10 @@ def render_ingestion():
         default="sample",
         key="ingest_source",
     ) or "sample"
+
+    if render_evidence_origin(source) is None:
+        st.info("Complete the required **evidence origin** fields (*) to enable intake.", icon=":material/info:")
+        return None
 
     if source == "sample":
         available = [s for s in SAMPLE_PRESETS if os.path.exists(os.path.join(SAMPLES_DIR, s))]
@@ -1932,9 +2090,10 @@ def render_dashboard(state: dict):
     state["pdf_ready"] = "sha256" in pdf_state
 
     st.write("")
-    t_over, t_xai, t_custody, t_report, t_log = st.tabs([
+    t_over, t_xai, t_prov, t_custody, t_report, t_log = st.tabs([
         ":material/space_dashboard: Overview",
         ":material/psychology: Explainability",
+        ":material/travel_explore: Provenance",
         ":material/verified_user: Chain of custody",
         ":material/picture_as_pdf: Report",
         ":material/receipt_long: Audit log",
@@ -1947,6 +2106,8 @@ def render_dashboard(state: dict):
             render_shap_explanation(result)
         with s_lime:
             render_lime_explanation(result)
+    with t_prov:
+        render_provenance_tab(evidence)
     with t_custody:
         render_custody_tab(result, evidence)
     with t_report:

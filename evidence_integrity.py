@@ -122,6 +122,8 @@ class CustodyChain:
         self.events        = []
         # Baseline hashes per artefact role, e.g. {"evidence": {...}, "csv": {...}}
         self.baselines     = {}
+        # Where the evidence came from and who it is prepared for (recorded at acquisition)
+        self.provenance    = {}
 
     # ── recording ──
     def record(self, stage: str, action: str, artifact: str, hashes: dict = None,
@@ -219,6 +221,7 @@ class CustodyChain:
             "link_algorithm": LINK_ALGORITHM,
             "ledger_key_id":  ledger_key_id(),
             "head_link_hash": self.head_hash,
+            "provenance":     self.provenance,
             "baselines":      self.baselines,
             "events":         self.events,
         }

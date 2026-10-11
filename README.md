@@ -147,11 +147,12 @@ This prints the dump's SHA-256 before and after extraction and saves the feature
 
 ## How the App Works
 0. **Sign in.** Every page requires an account (see [User Accounts & Access Control](#user-accounts--access-control)).
-1. **Open a case session.** Enter a case number plus an optional unit and notes; the analyst is the signed-in account. The opening time is recorded in local time (with UTC offset) and UTC. Nothing else is available until a case is open; closing the case records the closing time.
-2. **Load evidence** — a sample profile, a Volatility CSV, or a raw memory dump (uploaded or referenced by path). The evidence is hashed on arrival and gets an evidence item ID; uploads are preserved as write-protected working copies.
+1. **Open a case session.** Enter a case number, the **recipient the evidence is prepared for** (name, organisation, purpose, reference) plus an optional unit and notes; the analyst is the signed-in account. The opening time is recorded in local time (with UTC offset) and UTC. Nothing else is available until a case is open; closing the case records the closing time.
+2. **Record the evidence origin** — source device/host, owner/custodian, location, who collected it, when and with which tool — then **load evidence**: a sample profile, a Volatility CSV, or a raw memory dump (uploaded or referenced by path). The evidence is hashed on arrival and gets an evidence item ID; uploads are preserved as write-protected working copies.
 3. **Analyse a snapshot.** The dashboard shows a verdict panel (malware score gauge, risk level, classification, zero-day check, integrity status) and tabs for:
    - **Overview** — recommended response steps and the top reasons for the verdict
    - **Explainability** — interactive SHAP and LIME charts, driver cards and full tables
+   - **Provenance** — where the evidence came from and who it is prepared for (sealed in the ledger at acquisition; also in the PDF and manifest)
    - **Chain of custody** — case/evidence/analyst details, all hashes, the custody ledger, manifest download and on-demand re-verification
    - **Report** — download the sealed PDF and see its hash
    - **Audit log** — recent audit entries
@@ -175,6 +176,8 @@ Administrators see every sign-in event read from the HMAC-chained audit log, wit
 - **Sign-ins & sign-outs** — successful and failed sign-ins (with reason), lockouts, sign-outs, idle timeouts and revoked sessions, with session duration and client address; filter by user, event and date range; CSV export.
 - **Account administration** — accounts created, passwords changed/reset, roles changed, accounts disabled/enabled/unlocked, and who did it.
 - **All audit events** — the complete log (case sessions, custody events, verdicts, reports, validation, model checks) with category/level filters and search.
+
+If the log's chain ever fails verification, an administrator can **archive it unchanged** (`logs/archive/`, with a verification report) and start a new chain whose first entry records the archived file's SHA-256 — nothing is deleted or re-signed. Writes are serialised with a file lock and always chain to the last line on disk, so several writers or processes cannot fork the chain (`python audit_log.py archive --reason "..."` does the same from the command line).
 
 Each user can see their own recent sign-in activity on **My account**. Closing the browser tab without signing out is not recorded as a sign-out; the session simply expires.
 
