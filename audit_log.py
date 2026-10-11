@@ -20,6 +20,7 @@ Verify from the command line:
 """
 
 import os
+import re
 import sys
 import hmac
 import hashlib
@@ -132,7 +133,7 @@ def verify_log(path: str, key: bytes = None) -> dict:
     lines, problems = _split_lines(data), []
     genesis_idx = next((i for i, (_, t) in enumerate(lines) if GENESIS_MSG in t and CHAIN_SEP in t), None)
     if genesis_idx is None:
-        return {"log": path, "verified": False, "chained_lines": 0, "legacy_lines": len(lines),
+        return {"log": path, "verified": False, "chained_lines": 0, "legacy_lines": len(lines), "bad_lines": [],
                 "problems": ["No chained entries - the log was never protected or the genesis line was removed"]}
 
     # Genesis anchors the unchained history that precedes it
@@ -143,14 +144,16 @@ def verify_log(path: str, key: bytes = None) -> dict:
             or fields.get("PRIOR_SHA256") != hashlib.sha256(prior).hexdigest()):
         problems.append("Unchained history before the genesis line was modified")
 
-    prev, count = ei.GENESIS_LINK, 0
+    prev, count, bad_lines = ei.GENESIS_LINK, 0, []
     for n, (_, text) in enumerate(lines[genesis_idx:], start=genesis_idx + 1):
         if CHAIN_SEP not in text:
             problems.append(f"Line {n}: unchained line inserted into the protected log")
+            bad_lines.append(n)
             continue
         body, mac = text.rsplit(CHAIN_SEP, 1)
         if not hmac.compare_digest(_mac(key, prev, body), mac.strip()):
             problems.append(f"Line {n}: chain broken (line edited, inserted, removed or reordered)")
+            bad_lines.append(n)
         prev, count = mac.strip(), count + 1
 
     head_path = f"{path}.head"
@@ -167,7 +170,43 @@ def verify_log(path: str, key: bytes = None) -> dict:
                             "lines were removed from the end (truncation)")
 
     return {"log": path, "verified": not problems, "chained_lines": count,
-            "legacy_lines": genesis_idx, "problems": problems}
+            "legacy_lines": genesis_idx, "bad_lines": bad_lines, "problems": problems}
+
+
+_FIELD_RE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")
+
+
+def read_entries(path: str, bad_lines=()) -> list:
+    """
+    Parse the audit log into records: line number, timestamp, level, category
+    (first message segment, e.g. AUTH / CUSTODY), KEY=value fields (first
+    occurrence wins), the full message and the line's chain status.
+    """
+    if not os.path.isfile(path):
+        return []
+    with open(path, "rb") as f:
+        lines = _split_lines(f.read())
+    genesis = next((i for i, (_, t) in enumerate(lines) if GENESIS_MSG in t and CHAIN_SEP in t), len(lines))
+    bad, entries = set(bad_lines), []
+    for n, (_, text) in enumerate(lines, start=1):
+        body = text.rsplit(CHAIN_SEP, 1)[0] if CHAIN_SEP in text else text
+        parts = body.split(" | ")
+        segments = parts[2:] if len(parts) > 2 else parts[1:]
+        fields = {}
+        for seg in segments[1:]:
+            m = _FIELD_RE.match(seg.strip())
+            if m and m.group(1) not in fields:
+                fields[m.group(1)] = m.group(2).strip()
+        entries.append({
+            "line": n,
+            "timestamp": parts[0].strip(),
+            "level": parts[1].strip() if len(parts) > 2 else "",
+            "category": segments[0].strip() if segments else "",
+            "fields": fields,
+            "message": " | ".join(segments),
+            "chain": "broken" if n in bad else "legacy" if n <= genesis else "ok",
+        })
+    return entries
 
 
 if __name__ == "__main__":

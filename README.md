@@ -52,7 +52,9 @@ Memory_Forensics_Project/
 ├── memdump_extractor.py        # Volatility 3 memory dump → 55-feature CSV extractor (also a CLI)
 ├── evidence_integrity.py       # Hashing, HMAC custody ledger, manifest verifier, model hash pinning
 ├── input_validation.py         # Intake checks (size, CSV structure, memory-image signatures) and feature gate
-├── audit_log.py                # HMAC-chained, tamper-evident audit log handler and verifier
+├── audit_log.py                # HMAC-chained, tamper-evident audit log handler, verifier and parser
+├── auth.py                     # User accounts: PBKDF2 password hashing, roles, lockout, sealed account store
+├── admin_pages.py              # Sign-in, first-run setup, Audit log, Users and My account pages
 ├── ui_theme.py                 # Dashboard theme and reusable UI components
 ├── run_app.bat                 # Double-click launcher for Windows
 ├── requirements.txt            # Python dependencies
@@ -81,6 +83,7 @@ Memory_Forensics_Project/
 │   ├── simulate_zeroday.py / generate_synthetic_threats.py
 │   ├── extract_confident_samples.py / extract_real_benign.py
 │   ├── verify_data_integrity.py / pin_model_hashes.py
+│   ├── manage_users.py                        # Account recovery from the command line
 │   └── create_viva_doc.py / create_commands_runbook_docx.py   # build the Word documents
 │
 ├── outputs/                    # Evaluation artefacts and generated reports
@@ -130,7 +133,7 @@ python scripts/pin_model_hashes.py   # re-pin model hashes after any re-training
 streamlit run app.py
 ```
 
-Then open http://localhost:8501.
+Then open http://localhost:8501. On the very first start the dashboard asks you to create the **administrator account**; after that every user signs in.
 
 5. (Optional) Extract features from a memory dump on the command line:
 
@@ -143,7 +146,8 @@ This prints the dump's SHA-256 before and after extraction and saves the feature
 > The first Volatility run on a new Windows version needs internet access to download kernel symbol tables.
 
 ## How the App Works
-1. **Open a case session.** Enter a case number and the analyst's name (both mandatory) plus an optional unit and notes. The opening time is recorded in local time (with UTC offset) and UTC. Nothing else is available until a case is open; closing the case records the closing time.
+0. **Sign in.** Every page requires an account (see [User Accounts & Access Control](#user-accounts--access-control)).
+1. **Open a case session.** Enter a case number plus an optional unit and notes; the analyst is the signed-in account. The opening time is recorded in local time (with UTC offset) and UTC. Nothing else is available until a case is open; closing the case records the closing time.
 2. **Load evidence** — a sample profile, a Volatility CSV, or a raw memory dump (uploaded or referenced by path). The evidence is hashed on arrival and gets an evidence item ID; uploads are preserved as write-protected working copies.
 3. **Analyse a snapshot.** The dashboard shows a verdict panel (malware score gauge, risk level, classification, zero-day check, integrity status) and tabs for:
    - **Overview** — recommended response steps and the top reasons for the verdict
@@ -152,6 +156,36 @@ This prints the dump's SHA-256 before and after extraction and saves the feature
    - **Report** — download the sealed PDF and see its hash
    - **Audit log** — recent audit entries
 4. **Scan all rows** scores every snapshot in the evidence file at once.
+
+## User Accounts & Access Control
+| Role | Pages |
+|---|---|
+| **Analyst** | Triage, My account |
+| **Administrator** | Triage, **Audit log**, **Users**, My account |
+
+- **First run** creates the administrator. Administrators create further accounts on the **Users** page with a temporary password; the user must choose a new one at first sign-in. Administrators can also disable/enable accounts, change roles, unlock accounts and reset passwords (an administrator cannot disable or demote themselves, and at least one active administrator always remains).
+- **Passwords** are stored only as salted PBKDF2-HMAC-SHA256 hashes (600,000 iterations); at least 10 characters with letters and digits, not containing the username.
+- **Lockout:** 5 consecutive failed sign-ins lock an account for 15 minutes. Sign-in errors are generic, and unknown usernames take the same time to reject, so accounts cannot be probed.
+- **Sessions** end on sign-out, after 30 minutes of inactivity, or immediately when an administrator disables the account. Signing out closes any open case session.
+- **Account store** `keys/users.json` (git-ignored) is sealed with an HMAC under the ledger key; a hand-edited file disables sign-in until restored.
+- **Case attribution:** the analyst on case records, custody ledgers and PDF reports is the authenticated account (`Full Name (username)`), no longer a typed name.
+
+### Audit log page
+Administrators see every sign-in event read from the HMAC-chained audit log, with each entry's integrity status:
+- **Sign-ins & sign-outs** — successful and failed sign-ins (with reason), lockouts, sign-outs, idle timeouts and revoked sessions, with session duration and client address; filter by user, event and date range; CSV export.
+- **Account administration** — accounts created, passwords changed/reset, roles changed, accounts disabled/enabled/unlocked, and who did it.
+- **All audit events** — the complete log (case sessions, custody events, verdicts, reports, validation, model checks) with category/level filters and search.
+
+Each user can see their own recent sign-in activity on **My account**. Closing the browser tab without signing out is not recorded as a sign-out; the session simply expires.
+
+Account recovery (e.g. the only administrator is locked out) — every action is audited as `cli:<OS user>`:
+
+```bash
+python scripts/manage_users.py list
+python scripts/manage_users.py reset-password <username>
+python scripts/manage_users.py unlock <username>
+python scripts/manage_users.py create <username> "<Full Name>" --role admin
+```
 
 ## Chain of Custody & Evidence Integrity
 Every artefact is fingerprinted with SHA-256 and MD5 and re-verified at each stage:
@@ -224,7 +258,7 @@ These are findings from testing the current models. They are documented so resul
 - **Explanations reflect this bias.** SHAP/LIME correctly show that service and driver counts drive the verdict; they explain the model, not ground truth.
 - **Custody ledger is keyed, not signed.** Rebuilding the chain requires the ledger key, but anyone who can read `keys/ledger_hmac.key` could still forge a ledger; there is no asymmetric signature or trusted timestamp yet. Model pins protect against replaced model files, not against someone who can also edit `model_hashes.json` and the code.
 - **Audit log head can be rolled back.** Someone with file access who saved an older log and `.head` pair could restore both together; only an external copy of the head (e.g. in the case notes) rules this out.
-- **No authentication.** The dashboard is bound to `localhost` (`.streamlit/config.toml`); the analyst name is self-declared. Add access control before exposing it beyond the examiner's machine.
+- **Local accounts only.** Sign-in uses local accounts without multi-factor authentication and the dashboard is served over plain HTTP on `localhost`. Anyone with file access to `keys/` can reset accounts with `scripts/manage_users.py`; put TLS and SSO/MFA in front before exposing it beyond the examiner's machine.
 - Volatility symbol downloads require internet on first use; uploaded dumps are held in memory (use the path option for large dumps); Windows images only.
 
 ## Future Work

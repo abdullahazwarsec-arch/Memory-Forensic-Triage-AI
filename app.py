@@ -11,6 +11,7 @@ import uuid
 import html
 import logging
 import hashlib
+import time
 import shutil
 from datetime import datetime
 
@@ -33,6 +34,8 @@ import ui_theme as ui
 import evidence_integrity as ei
 import input_validation as iv
 import audit_log
+import auth
+import admin_pages
 
 
 # ── SECTION 2: PATHS & FOLDER SETUP ──────────────────────────────────────────
@@ -66,9 +69,10 @@ os.makedirs(SAMPLES_DIR, exist_ok=True)
 # Every prediction is written to a log file with timestamp
 # This is chain-of-custody — a record of every analysis ever run.
 # Each line is HMAC-chained to the previous one (see audit_log.py).
-AUDIT_LOG_PATH = os.path.join(LOG_DIR, "triage_audit.log")
+AUDIT_LOG_PATH = os.environ.get("MEMTRIAGE_AUDIT_LOG") or os.path.join(LOG_DIR, "triage_audit.log")
 audit_log.setup(AUDIT_LOG_PATH)
 logger = logging.getLogger("triage")
+admin_pages.AUDIT_LOG_PATH = AUDIT_LOG_PATH
 
 
 # ── SECTION 4: FORENSIC FEATURE DICTIONARY & HUMAN TRANSLATOR ────────────────
@@ -1076,7 +1080,7 @@ def render_case_session():
         org = f" · {ui.esc(session['organisation'])}" if session["organisation"] else ""
         previous = (f" · continues case ({session['prior_sessions']} earlier session"
                     f"{'s' if session['prior_sessions'] != 1 else ''})" if session["prior_sessions"] else "")
-        col_info, col_close = st.columns([5, 1], vertical_alignment="center")
+        col_info, col_close = st.columns([4.2, 1.2], vertical_alignment="center")
         with col_info:
             ui.render_html(f"""
             <div class="fx-kpis">
@@ -1102,19 +1106,20 @@ def render_case_session():
                                         help="Your lab's case reference. Letters, digits, - _ . / (3-40 characters).")
             organisation = st.text_input("Unit / organisation", placeholder="e.g. CSIRT, DFIR Lab")
         with c2:
-            analyst = st.text_input("Analyst name *", placeholder="Full name of the examiner")
+            user = st.session_state["auth_user"]
+            analyst = f"{user['full_name']} ({user['username']})"
+            st.text_input("Analyst (signed-in account)", value=analyst, disabled=True,
+                          help="Case actions are attributed to the authenticated user.")
             notes = st.text_input("Case notes", placeholder="e.g. Suspected ransomware on HR-PC-07")
         st.caption(f"The session start time is recorded automatically: **{ei.local_timestamp()}** "
                    f"(every custody event is also stamped in UTC).")
         submitted = st.form_submit_button("Open case session", type="primary", icon=":material/folder_open:")
 
     if submitted:
-        case_number, analyst = case_number.strip(), " ".join(analyst.split())
+        case_number = case_number.strip()
         errors = []
         if not CASE_NUMBER_RE.match(case_number):
             errors.append("Enter a valid **case number** (3-40 characters: letters, digits, - _ . /).")
-        if len(analyst) < 3:
-            errors.append("**Analyst name** is required (at least 3 characters).")
         if errors:
             for e in errors:
                 st.error(e, icon=":material/error:")
@@ -1244,7 +1249,7 @@ def render_memory_dump_ingestion():
             reject_intake(dump_key, dump_name, e)
             return None
     else:
-        ui.empty_state("🧠", "Add a Windows memory image",
+        ui.empty_state("memory", "Add a Windows memory image",
                        "It is hashed (SHA-256 + MD5), Volatility 3 extracts 55 memory features, "
                        "and every step is re-verified up to the final report.")
         return None
@@ -1400,6 +1405,7 @@ STATUS_ICONS = {
 
 RISK_TONES = {"HIGH RISK": "critical", "SUSPICIOUS": "warning", "NORMAL": "good"}
 RISK_ICONS = {"HIGH RISK": "⛔", "SUSPICIOUS": "⚠️", "NORMAL": "✅"}
+RISK_GLYPHS = {"HIGH RISK": "gpp_bad", "SUSPICIOUS": "warning", "NORMAL": "verified_user"}
 KIND_LABELS = {"memory-dump": "Memory dump", "csv-upload": "CSV upload", "csv-sample": "Sample profile"}
 
 SAMPLE_PRESETS = {
@@ -1548,7 +1554,8 @@ def render_ingestion():
     source = st.segmented_control(
         "Evidence source",
         options=["sample", "csv", "dump"],
-        format_func={"sample": "🧪  Sample profile", "csv": "📄  Volatility CSV", "dump": "🧠  Memory dump"}.get,
+        format_func={"sample": ":material/science: Sample profile", "csv": ":material/table_view: Volatility CSV",
+                     "dump": ":material/memory: Memory dump"}.get,
         default="sample",
         key="ingest_source",
     ) or "sample"
@@ -1572,7 +1579,7 @@ def render_ingestion():
     uploaded = st.file_uploader("Volatility feature CSV", type=["csv"],
                                 help="A CSV with the 55 Volatility memory features (one row per memory snapshot).")
     if uploaded is None:
-        ui.empty_state("📄", "Drop a Volatility CSV to begin",
+        ui.empty_state("upload_file", "Drop a Volatility CSV to begin",
                        "It is fingerprinted on arrival and re-verified at every step.")
         return None
     try:
@@ -1631,14 +1638,14 @@ def render_verdict(result: dict, chain):
     }[risk]
     anomaly_html = ""
     if result["is_anomaly"]:
-        anomaly_html = ui.banner("🛰️", "Zero-day anomaly", "Isolation Forest flagged this profile as an outlier versus known baselines.", "accent")
+        anomaly_html = ui.banner("radar", "Zero-day anomaly", "Isolation Forest flagged this profile as an outlier versus known baselines.", "accent")
     tiles = "".join([
-        ui.kpi("Risk level", f"{RISK_ICONS[risk]} {risk}", color=ui.TONES[tone][0]),
-        ui.kpi("Classification", "🦠 MALWARE" if is_malware else "🛡️ BENIGN",
+        ui.kpi("Risk level", f"{ui.icon(RISK_GLYPHS[risk])} {risk}", color=ui.TONES[tone][0]),
+        ui.kpi("Classification", f"{ui.icon('coronavirus')} MALWARE" if is_malware else f"{ui.icon('shield')} BENIGN",
                color=ui.CRITICAL if is_malware else ui.GOOD),
-        ui.kpi("Zero-day check", "⚠️ Anomaly" if result["is_anomaly"] else "✅ Normal",
+        ui.kpi("Zero-day check", f"{ui.icon('radar')} Anomaly" if result["is_anomaly"] else f"{ui.icon('check_circle')} Normal",
                color=ui.WARNING if result["is_anomaly"] else ui.GOOD),
-        ui.kpi("Evidence integrity", "🔒 Verified" if chain.is_intact else "⛔ Compromised",
+        ui.kpi("Evidence integrity", f"{ui.icon('lock')} Verified" if chain.is_intact else f"{ui.icon('lock_open')} Compromised",
                color=ui.GOOD if chain.is_intact else ui.CRITICAL),
     ])
     ui.render_html(f"""
@@ -1647,7 +1654,7 @@ def render_verdict(result: dict, chain):
         <div>{ui.gauge(pct, tone, "Malware score")}</div>
         <div>
           <div class="fx-kpis">{tiles}</div>
-          {ui.banner(RISK_ICONS[risk], banner[0], banner[1], tone)}
+          {ui.banner(RISK_GLYPHS[risk], banner[0], banner[1], tone)}
           {anomaly_html}
         </div>
       </div>
@@ -1769,7 +1776,7 @@ def render_custody_tab(result: dict, evidence: dict):
 
 
 def render_audit_tab():
-    log_path = os.path.join(LOG_DIR, "triage_audit.log")
+    log_path = AUDIT_LOG_PATH
     if not os.path.exists(log_path):
         st.info("No audit records yet.")
         return
@@ -1782,14 +1789,6 @@ def render_audit_tab():
 def render_sidebar(case, evidence, result, pdf_ready: bool):
     rf_found, iso_found = os.path.exists(MODEL_PATH), os.path.exists(ISO_PATH)
     with st.sidebar:
-        ui.render_html("""
-        <div style="display:flex; align-items:center; gap:0.7rem;">
-          <div class="fx-logo" style="width:42px;height:42px;font-size:1.3rem;">🧬</div>
-          <div><div style="font-weight:800;font-size:1.2rem;">MemTriage <span style="color:var(--accent);">XAI</span></div>
-          <div style="color:var(--muted);font-size:0.85rem;">Memory forensics lab</div></div>
-        </div>
-        """)
-
         ui.render_html('<div class="fx-side-label">Active case</div>')
         if case:
             ellipsis = "max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);"
@@ -1835,17 +1834,17 @@ def render_sidebar(case, evidence, result, pdf_ready: bool):
 
 def render_dashboard(state: dict):
     # ── 0. Case session (mandatory) ───────────────────────────
-    ui.section("Case session", "Every analysis is recorded under a case number and a named analyst.", "🗃️")
+    ui.section("Case session", "Every analysis is recorded under a case number and a named analyst.", "folder_open")
     with st.container(border=True):
         session = render_case_session()
     if session is None:
-        ui.empty_state("🔐", "Open a case to start",
+        ui.empty_state("lock", "Open a case to start",
                        "Enter the case number and analyst name. Evidence intake unlocks once the session is open.")
         return
     state["case"] = session
 
     # ── 1. Evidence intake ────────────────────────────────────
-    ui.section("Evidence intake", "Load a sample, a Volatility CSV or a raw Windows memory dump.", "🗂️")
+    ui.section("Evidence intake", "Load a sample, a Volatility CSV or a raw Windows memory dump.", "inventory_2")
     with st.container(border=True):
         evidence = render_ingestion()
     if evidence is None:
@@ -1874,9 +1873,9 @@ def render_dashboard(state: dict):
         return
 
     # ── 2. Triage controls ────────────────────────────────────
-    ui.section("Run triage", "Pick a memory snapshot (row) and analyse it.", "🎯")
+    ui.section("Run triage", "Pick a memory snapshot (row) and analyse it.", "troubleshoot")
     with st.container(border=True):
-        c_row, c_run, c_scan, c_reset = st.columns([2.2, 1.6, 1.2, 0.9], vertical_alignment="bottom")
+        c_row, c_run, c_scan, c_reset = st.columns([2, 1.6, 1.45, 1], vertical_alignment="bottom")
         with c_row:
             row_index = st.selectbox("Memory snapshot", options=list(range(len(df))),
                                      format_func=lambda i: f"Row {i}" + (f" of {len(df)}" if len(df) > 1 else ""))
@@ -1916,7 +1915,7 @@ def render_dashboard(state: dict):
 
     result = st.session_state.get("current_triage")
     if result is None or result.get("evidence_key") != evidence["key"]:
-        ui.empty_state("🔬", "Ready to analyse",
+        ui.empty_state("biotech", "Ready to analyse",
                        "Choose a snapshot above and press <b>Analyse snapshot</b> to get the verdict, explanation and report.")
         return
     state["result"] = result
@@ -1926,7 +1925,7 @@ def render_dashboard(state: dict):
                 icon=":material/info:")
 
     # ── 3. Results ────────────────────────────────────────────
-    ui.section("Verdict", f"{result['source_file']} · row {result['row_index']} · {result['timestamp']}", "🧾")
+    ui.section("Verdict", f"{result['source_file']} · row {result['row_index']} · {result['timestamp']}", "gavel")
     render_verdict(result, evidence["chain"])
 
     pdf_state = ensure_report(evidence, result)       # before the ledger so it includes the report seal
@@ -1956,10 +1955,7 @@ def render_dashboard(state: dict):
         render_audit_tab()
 
 
-def main():
-    st.set_page_config(page_title="MemTriage XAI · Memory Forensics", page_icon="🧬", layout="wide")
-    ui.inject_theme()
-
+def triage_page():
     rf_found = os.path.exists(MODEL_PATH)
     ui.page_header(
         "MemTriage", "XAI",
@@ -1986,6 +1982,104 @@ def main():
         with stepper_slot.container():
             ui.stepper(steps)
         render_sidebar(state["case"], evidence, result, state["pdf_ready"])
+
+
+# ── Authentication & sessions ─────────────────────────────────────────────────
+def start_session(user: dict):
+    """A successful sign-in starts a fresh, empty workspace."""
+    st.session_state.clear()
+    st.session_state["auth"] = {
+        "username": user["username"], "session_id": uuid.uuid4().hex[:8].upper(),
+        "login_ts": time.time(), "last_seen": time.time(), "login_local": ei.local_timestamp(),
+    }
+    auth.audit("LOGIN_SUCCESS", user["username"], role=user["role"],
+               session=st.session_state["auth"]["session_id"], client=admin_pages.client_ip())
+
+
+def end_session(event: str, notice: str = None, level: int = logging.INFO, **fields):
+    """Close any open case, record the sign-out and wipe the session state."""
+    sess = st.session_state.get("auth")
+    if sess:
+        close_case_session()
+        minutes = (time.time() - sess["login_ts"]) / 60
+        auth.audit(event, sess["username"], level, session=sess["session_id"],
+                   duration=f"{minutes:.0f} min", client=admin_pages.client_ip(), **fields)
+    st.session_state.clear()
+    if notice:
+        st.session_state["login_notice"] = notice
+
+
+def current_user():
+    """Re-validate the signed-in user on every run (idle timeout, disabled account, role changes)."""
+    sess = st.session_state.get("auth")
+    if not sess:
+        return None
+    user = auth.get_user(sess["username"])
+    if user is None or not user["active"]:
+        end_session("SESSION_REVOKED", "Your account was disabled — contact an administrator.",
+                    logging.WARNING, reason="account disabled or removed")
+        return None
+    if auth.session_expired(sess["last_seen"]):
+        idle = datetime.fromtimestamp(sess["last_seen"]).strftime("%H:%M:%S")
+        end_session("SESSION_TIMEOUT", f"You were signed out after {auth.IDLE_TIMEOUT_MIN} minutes of inactivity.",
+                    idle_since=idle)
+        return None
+    sess["last_seen"] = time.time()
+    st.session_state["auth_user"] = user
+    return user
+
+
+def render_user_panel(user: dict):
+    with st.sidebar:
+        ui.sidebar_brand()
+        sess = st.session_state["auth"]
+        ui.render_html('<div class="fx-side-label">Signed in</div>'
+                       f'<div class="fx-side-row"><span>User</span><span>{ui.esc(user["full_name"])}</span></div>'
+                       f'<div class="fx-side-row"><span>Account</span><code>{ui.esc(user["username"])}</code></div>'
+                       f'<div class="fx-side-row"><span>Role</span>'
+                       f'{ui.pill(admin_pages.ROLE_LABELS[user["role"]], "accent" if user["role"] == "admin" else "neutral")}</div>'
+                       f'<div class="fx-side-row"><span>Since</span><span style="font-size:0.85rem;">'
+                       f'{ui.esc(sess["login_local"][11:16])}</span></div>')
+        if st.button("Sign out", icon=":material/logout:", width="stretch", key="sign_out"):
+            end_session("LOGOUT", "You have been signed out.")
+            st.rerun()
+
+
+def main():
+    st.set_page_config(page_title="MemTriage XAI · Memory Forensics", page_icon=":material/memory:", layout="wide")
+    ui.inject_theme()
+
+    try:
+        if not auth.has_users():
+            admin_pages.render_first_run_setup()
+            return
+        user = current_user()
+        if user is None:
+            user = admin_pages.render_login()
+            if user is None:
+                return
+            start_session(user)
+            st.rerun()
+    except auth.UserStoreTampered as e:
+        logger.error(f"AUTH | EVENT=USER_STORE_TAMPERED | USER=- | DETAIL={e}")
+        st.error(f"**Account store integrity failure.** {e}", icon=":material/gpp_bad:")
+        return
+
+    if user.get("must_change_password"):
+        render_user_panel(user)
+        ui.section("Set a new password", "Required before first use of this account.", "key")
+        admin_pages.render_password_change(user, forced=True)
+        return
+
+    pages = [st.Page(triage_page, title="Triage", icon=":material/biotech:", url_path="triage", default=True)]
+    if user["role"] == "admin":
+        pages += [st.Page(admin_pages.render_audit_page, title="Audit log", icon=":material/policy:", url_path="audit"),
+                  st.Page(admin_pages.render_users_page, title="Users", icon=":material/group:", url_path="users")]
+    pages.append(st.Page(admin_pages.render_account_page, title="My account", icon=":material/person:",
+                         url_path="account"))
+    page = st.navigation(pages, position="top")
+    render_user_panel(user)
+    page.run()
 
 
 # ── ENTRY POINT ───────────────────────────────────────────────────────────────
