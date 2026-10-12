@@ -11,6 +11,7 @@ import uuid
 import html
 import logging
 import hashlib
+import hmac
 import time
 import shutil
 from datetime import datetime
@@ -36,6 +37,7 @@ import input_validation as iv
 import audit_log
 import auth
 import admin_pages
+import help_page
 
 
 # ── SECTION 2: PATHS & FOLDER SETUP ──────────────────────────────────────────
@@ -1115,9 +1117,7 @@ def render_case_session():
             """)
         with col_close:
             if st.button("Close case", width="stretch", icon=":material/lock:"):
-                close_case_session()
-                st.toast("Case session closed and logged", icon="🔒")
-                st.rerun()
+                confirm_close_case()
         return session
 
     with st.form("open_case_form", border=False):
@@ -1137,7 +1137,7 @@ def render_case_session():
         recipient_name = r1.text_input("Recipient *", placeholder="e.g. DCI Sarah Khan")
         recipient_org  = r2.text_input("Recipient organisation", placeholder="e.g. Metro Police Cyber Unit")
         purpose        = r3.selectbox("Purpose", PURPOSES)
-        reference      = r4.text_input("Request / reference no.", placeholder="e.g. REQ-2026-114")
+        reference      = r4.text_input("Reference no.", placeholder="e.g. REQ-2026-114")
         st.caption(f"The session start time is recorded automatically: **{ei.local_timestamp()}** "
                    f"(every custody event is also stamped in UTC).")
         submitted = st.form_submit_button("Open case session", type="primary", icon=":material/folder_open:")
@@ -1159,6 +1159,20 @@ def render_case_session():
         st.toast(f"Case {case_number} opened by {analyst}", icon="📂")
         st.rerun()
     return None
+
+
+@st.dialog("Close this case session?")
+def confirm_close_case():
+    session = active_case()
+    st.write(f"Case **{session['case_number']}** will be closed and the closing time recorded. "
+             "You can continue it later from the **Cases** page.")
+    c1, c2 = st.columns(2)
+    if c1.button("Keep working", width="stretch"):
+        st.rerun()
+    if c2.button("Close case", type="primary", width="stretch", icon=":material/lock:"):
+        close_case_session()
+        st.toast("Case session closed and logged", icon=":material/lock:")
+        st.rerun()
 
 
 def open_case(evidence_name: str, kind: str, hashes: dict, action: str, details: str = ""):
@@ -1193,6 +1207,20 @@ def record_provenance(chain, origin: dict, recipient: dict):
                           f"at {origin.get('collected_at', '-')} | Location: {origin.get('location') or '-'} | "
                           f"Tool: {origin.get('acquisition_tool', '-')} | Prepared for: {recipient_label(recipient)} "
                           f"| Purpose: {recipient.get('purpose', '-')} | Ref: {recipient.get('reference') or '-'}"))
+    reported = origin.get("reported_hash", "")
+    if reported:
+        ev = chain.baseline("evidence")
+        algo = "SHA-256" if len(reported) == 64 else "MD5"
+        computed = ev.get("sha256" if algo == "SHA-256" else "md5", "")
+        match = hmac.compare_digest(reported, computed)
+        chain.record("Acquisition Verification",
+                     f"{algo} reported by the acquisition tool compared with the hash computed on arrival",
+                     chain.evidence_name, {k: ev.get(k) for k in ("sha256", "md5", "size")},
+                     status=ei.STATUS_MATCH if match else ei.STATUS_MISMATCH,
+                     details=f"Reported {algo}: {reported} | Computed {algo}: {computed}")
+        (logger.info if match else logger.error)(
+            f"ACQUISITION HASH {'MATCH' if match else 'MISMATCH'} | CASE={chain.case_id} | "
+            f"EVIDENCE={chain.evidence_id} | {algo} reported={reported} computed={computed}")
     logger.info(f"PROVENANCE | CASE={chain.case_id} | EVIDENCE={chain.evidence_id} | "
                 f"SOURCE={origin_label(origin)} | COLLECTED_BY={origin.get('collected_by', '-')} | "
                 f"COLLECTED_AT={origin.get('collected_at', '-')} | TOOL={origin.get('acquisition_tool', '-')} | "
@@ -1567,7 +1595,8 @@ def render_evidence_summary(ctx: dict, df: pd.DataFrame):
               + ui.hash_line("Evidence SHA-256", ev.get("sha256", "")) + ui.hash_line("Evidence MD5", ev.get("md5", "")))
     if csv:
         hashes += ui.hash_line(f"Derived CSV SHA-256 · {csv.get('artifact', '')}", csv.get("sha256", ""))
-    ui.render_html(f'<div class="fx-card" style="margin: 0.8rem 0 0.9rem; padding-top: 0.4rem;">{hashes}</div>')
+    with st.expander("Technical fingerprints — evidence ID and hashes", icon=":material/fingerprint:"):
+        ui.render_html(f'<div style="padding-top: 0.1rem;">{hashes}</div>')
     prov = chain.provenance or {}
     if prov:
         origin, recipient = prov.get("origin") or {}, prov.get("prepared_for") or {}
@@ -1652,10 +1681,20 @@ def render_evidence_origin(source: str):
         at        = c6.time_input("Time", key=k("time"))
         tool      = c7.selectbox("Acquisition tool", ACQUISITION_TOOLS, key=k("tool"),
                                  index=ACQUISITION_TOOLS.index(defaults.get("acquisition_tool", "DumpIt")))
-        notes     = st.text_input("Origin notes", placeholder="e.g. Seized under warrant 22/114; machine was running",
+        n1, n2 = st.columns([1.2, 1])
+        notes     = n1.text_input("Origin notes", placeholder="e.g. Seized under warrant 22/114; machine was running",
                                   key=k("notes"))
+        reported  = n2.text_input("Hash from the acquisition tool (optional)", key=k("hash"),
+                                  placeholder="SHA-256 or MD5 printed by DumpIt / FTK Imager…",
+                                  help="If given, it is compared with the hash computed when the evidence arrives. "
+                                       "A mismatch blocks analysis.").strip().lower()
         st.caption("Recorded in the custody ledger when the evidence is acquired. Changes made afterwards apply "
                    "to the next evidence item only.")
+    if reported and not re.fullmatch(r"[0-9a-f]{32}|[0-9a-f]{64}", reported):
+        st.error("The acquisition-tool hash must be an MD5 (32 hex characters) or SHA-256 (64 hex characters).",
+                 icon=":material/error:")
+        st.session_state.pop("pending_origin", None)
+        return None
     if len(device.strip()) < 2 or len(collector.strip()) < 2:
         st.session_state.pop("pending_origin", None)
         return None
@@ -1663,6 +1702,7 @@ def render_evidence_origin(source: str):
     origin = {
         "source_device": device.strip(), "custodian": custodian.strip(), "location": location.strip(),
         "collected_by": " ".join(collector.split()), "acquisition_tool": tool, "notes": notes.strip(),
+        "reported_hash": reported,
         "collected_at": ei.local_timestamp(collected_at),
     }
     st.session_state["pending_origin"] = origin
@@ -1963,18 +2003,6 @@ def render_sidebar(case, evidence, result, pdf_ready: bool):
         else:
             st.caption("No case open.")
 
-        ui.render_html('<div class="fx-side-label">Workflow</div>')
-        checks = [
-            ("Case opened by analyst", bool(case)),
-            ("Evidence acquired & hashed", bool(evidence)),
-            ("Integrity verified", bool(evidence) and evidence["chain"].is_intact),
-            ("Triage completed", result is not None),
-            ("Report sealed", pdf_ready),
-        ]
-        ui.render_html("".join(
-            f'<div class="fx-check"><span style="color:{ui.GOOD if ok else ui.MUTED};font-size:1.05rem;">'
-            f'{"●" if ok else "○"}</span>{ui.esc(label)}</div>' for label, ok in checks))
-
         ui.render_html('<div class="fx-side-label">Engines</div>')
         ui.render_html(
             f'<div class="fx-side-row"><span>Random Forest</span>{ui.pill("Online" if rf_found else "Offline", "good" if rf_found else "critical")}</div>'
@@ -1996,8 +2024,15 @@ def render_dashboard(state: dict):
     with st.container(border=True):
         session = render_case_session()
     if session is None:
-        ui.empty_state("lock", "Open a case to start",
-                       "Enter the case number and analyst name. Evidence intake unlocks once the session is open.")
+        st.markdown("##### New here? This is how it works")
+        ui.guide_steps([
+            ("folder_open", "Open a case", "Fill in the case number and who the findings are for, above."),
+            ("travel_explore", "Record the origin", "Where the evidence came from, who collected it and when."),
+            ("upload_file", "Load evidence", "A sample profile, a Volatility CSV or a raw Windows memory dump."),
+            ("troubleshoot", "Analyse", "Get a plain-English verdict with the reasons behind it."),
+            ("picture_as_pdf", "Share the report", "Download the sealed PDF — every step is hash-verified."),
+        ])
+        st.caption("Need more detail? Open **Help** in the top menu for a glossary and FAQ.")
         return
     state["case"] = session
 
@@ -2038,11 +2073,15 @@ def render_dashboard(state: dict):
             row_index = st.selectbox("Memory snapshot", options=list(range(len(df))),
                                      format_func=lambda i: f"Row {i}" + (f" of {len(df)}" if len(df) > 1 else ""))
         with c_run:
-            run_clicked = st.button("Analyse snapshot", type="primary", width="stretch", icon=":material/play_arrow:")
+            run_clicked = st.button("Analyse snapshot", type="primary", width="stretch", icon=":material/play_arrow:",
+                                    help="Re-checks the evidence hashes, then runs both models on this snapshot "
+                                         "and explains the verdict.")
         with c_scan:
-            scan_clicked = st.button("Scan all rows", width="stretch", icon=":material/radar:")
+            scan_clicked = st.button("Scan all rows", width="stretch", icon=":material/radar:",
+                                     help="Quickly scores every snapshot in the file so you can pick the riskiest.")
         with c_reset:
-            if st.button("Reset", width="stretch", icon=":material/restart_alt:"):
+            if st.button("Reset", width="stretch", icon=":material/restart_alt:",
+                         help="Clears the results on screen. Nothing is deleted from the case."):
                 st.session_state["current_triage"] = None
                 st.session_state["batch_summary"] = None
                 st.rerun()
@@ -2145,6 +2184,175 @@ def triage_page():
         render_sidebar(state["case"], evidence, result, state["pdf_ready"])
 
 
+# ── Cases page ────────────────────────────────────────────────────────────────
+PAGES = {}   # navigation pages, filled in main() (used to jump back to Triage)
+
+
+def list_case_records() -> list:
+    records = []
+    if os.path.isdir(CASES_DIR):
+        for name in os.listdir(CASES_DIR):
+            path = os.path.join(CASES_DIR, name, "case.json")
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    rec = json.load(f)
+            except (OSError, ValueError):
+                continue
+            rec["_dir"] = os.path.join(CASES_DIR, name)
+            records.append(rec)
+    return sorted(records, key=lambda r: r.get("created_utc", ""), reverse=True)
+
+
+def latest_recipient(rec: dict) -> dict:
+    return next((s["recipient"] for s in reversed(rec.get("sessions", [])) if s.get("recipient")), {}) or {}
+
+
+def manifest_status(case_dir: str, evidence_id: str):
+    path = os.path.join(case_dir, evidence_id, "custody_manifest.json")
+    if not os.path.isfile(path):
+        return "Ledger missing", "warning", None
+    check = ei.verify_manifest(path)
+    with open(path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+    if check["verified"]:
+        return "Verified", "good", manifest
+    if any("legacy" in p for p in check["problems"]):
+        return "Legacy ledger", "neutral", manifest
+    return "Compromised", "critical", manifest
+
+
+def case_reports(manifest: dict) -> list:
+    reports = []
+    for e in (manifest or {}).get("events", []):
+        if e["stage"] == "Report":
+            path = os.path.join(OUTPUT_DIR, os.path.basename(e["artifact"]))
+            exists = os.path.isfile(path)
+            reports.append({"name": e["artifact"], "path": path, "time": e["timestamp"], "exists": exists,
+                            "intact": exists and ei.hash_file(path)["sha256"] == e["sha256"]})
+    return reports
+
+
+def continue_case(rec: dict):
+    user = st.session_state["auth_user"]
+    if active_case():
+        close_case_session()
+    last = (rec.get("sessions") or [{}])[-1]
+    open_case_session(rec["case_number"], f"{user['full_name']} ({user['username']})",
+                      last.get("organisation", ""), "Continued from the Cases page",
+                      latest_recipient(rec) or {"name": "-", "organisation": "", "purpose": "Other", "reference": ""})
+    st.switch_page(PAGES["triage"])
+
+
+def cases_page():
+    ui.section("Cases", "Every case in this lab — evidence, integrity, reports and who it was prepared for.",
+               "folder_shared")
+    records = list_case_records()
+    if not records:
+        ui.empty_state("folder_open", "No cases yet", "Open a case on the <b>Triage</b> page — it will appear here.")
+        return
+
+    rows = []
+    for r in records:
+        sessions, evidence = r.get("sessions", []), r.get("evidence", [])
+        times = [t for s in sessions for t in (s.get("opened_utc"), s.get("closed_utc")) if t]
+        times += [e.get("acquired_utc") for e in evidence if e.get("acquired_utc")]
+        rows.append({
+            "Case": r["case_number"],
+            "Prepared for": admin_recipient(latest_recipient(r)),
+            "Analysts": ", ".join(sorted({s.get("analyst", "") for s in sessions if s.get("analyst")})),
+            "Evidence": len(evidence),
+            "Sessions": len(sessions),
+            "Created": r.get("created_local", "")[:16],
+            "Last activity": max(times)[:16] if times else "",
+        })
+    table = pd.DataFrame(rows)
+    query = st.text_input("Search cases", placeholder="Case number, analyst, recipient…", key="case_search",
+                          icon=":material/search:")
+    if query:
+        mask = table.apply(lambda r: query.lower() in " ".join(map(str, r.values)).lower(), axis=1)
+        table = table[mask]
+    ui.kpi_row([
+        ui.kpi("Cases", f"{len(records)}"),
+        ui.kpi("Evidence items", f"{sum(len(r.get('evidence', [])) for r in records)}"),
+        ui.kpi("Analysts", f"{len({s.get('analyst') for r in records for s in r.get('sessions', [])})}"),
+    ])
+    st.write("")
+    st.dataframe(table, hide_index=True, width="stretch",
+                 column_config={"Evidence": st.column_config.NumberColumn(width=90),
+                                "Sessions": st.column_config.NumberColumn(width=90)})
+    if table.empty:
+        st.caption("No case matches your search.")
+        return
+
+    choice = st.selectbox("Case details", table["Case"].tolist(), key="case_pick")
+    rec = next(r for r in records if r["case_number"] == choice)
+    recipient = latest_recipient(rec)
+    with st.container(border=True):
+        top_l, top_r = st.columns([4, 1.3], vertical_alignment="center")
+        with top_l:
+            ui.kpi_row([
+                ui.kpi("Case", ui.esc(rec["case_number"]), mono=True),
+                ui.kpi("Prepared for", ui.esc(recipient.get("name") or "—"),
+                       ui.esc(" · ".join(v for v in (recipient.get("organisation"), recipient.get("purpose")) if v)),
+                       small=True),
+                ui.kpi("Created", ui.esc(rec.get("created_local", "—")[:16]), small=True),
+            ])
+        with top_r:
+            current = (active_case() or {}).get("case_number") == rec["case_number"]
+            if st.button("Open in Triage" if current else "Continue this case", type="primary", width="stretch",
+                         icon=":material/play_arrow:", help="Starts a new recorded session for this case."):
+                if current:
+                    st.switch_page(PAGES["triage"])
+                continue_case(rec)
+
+        st.markdown("**Evidence items**")
+        if not rec.get("evidence"):
+            st.caption("No evidence was acquired in this case yet.")
+        for ev in rec.get("evidence", []):
+            label, tone, manifest = manifest_status(rec["_dir"], ev["evidence_id"])
+            origin = ((ev.get("provenance") or {}).get("origin")) or {}
+            with st.expander(f"{ev['name']}  ·  {KIND_LABELS.get(ev.get('kind'), ev.get('kind', ''))}  ·  {label}",
+                             icon=":material/description:"):
+                ui.render_html(
+                    f'<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem;">{ui.pill(label, tone)}'
+                    f'{ui.pill(ev["evidence_id"], "neutral", dot=False)}</div>')
+                ui.kpi_row([
+                    ui.kpi("Acquired by", ui.esc(ev.get("acquired_by", "—")), ui.esc(ev.get("acquired_local", "")),
+                           small=True),
+                    ui.kpi("Source", ui.esc(origin.get("source_device") or "—"),
+                           ui.esc(f"collected by {origin['collected_by']}" if origin.get("collected_by") else ""),
+                           small=True),
+                    ui.kpi("Size", ei.format_size(ev.get("size") or 0)),
+                ])
+                ui.render_html(ui.hash_line("SHA-256 at acquisition", ev.get("sha256", "")))
+                reports = case_reports(manifest)
+                if reports:
+                    st.markdown("**Sealed reports**")
+                for i, rep in enumerate(reports):
+                    c1, c2 = st.columns([4, 1.2], vertical_alignment="center")
+                    seal = ("🟢 seal intact" if rep["intact"] else "🔴 modified since sealing" if rep["exists"]
+                            else "⚪ file not found")
+                    c1.markdown(f"`{rep['name']}` · {rep['time']} · {seal}")
+                    if rep["exists"]:
+                        with open(rep["path"], "rb") as f:
+                            c2.download_button("Download", f.read(), file_name=rep["name"], mime="application/pdf",
+                                               icon=":material/download:", width="stretch",
+                                               key=f"dl_{ev['evidence_id']}_{i}")
+
+        with st.expander(f"Sessions ({len(rec.get('sessions', []))})", icon=":material/history:"):
+            st.dataframe(pd.DataFrame([{
+                "Session": s.get("session_id"), "Analyst": s.get("analyst"),
+                "Opened": s.get("opened_local", ""), "Closed": s.get("closed_local") or "—",
+                "Notes": s.get("notes", ""),
+            } for s in rec.get("sessions", [])]), hide_index=True, width="stretch")
+
+
+def admin_recipient(recipient: dict) -> str:
+    return recipient_label(recipient) if recipient else "—"
+
+
 # ── Authentication & sessions ─────────────────────────────────────────────────
 def start_session(user: dict):
     """A successful sign-in starts a fresh, empty workspace."""
@@ -2209,6 +2417,7 @@ def render_user_panel(user: dict):
 def main():
     st.set_page_config(page_title="MemTriage XAI · Memory Forensics", page_icon=":material/memory:", layout="wide")
     ui.inject_theme()
+    ui.inject_background()
 
     try:
         if not auth.has_users():
@@ -2232,12 +2441,15 @@ def main():
         admin_pages.render_password_change(user, forced=True)
         return
 
-    pages = [st.Page(triage_page, title="Triage", icon=":material/biotech:", url_path="triage", default=True)]
+    PAGES["triage"] = st.Page(triage_page, title="Triage", icon=":material/biotech:", url_path="triage", default=True)
+    pages = [PAGES["triage"],
+             st.Page(cases_page, title="Cases", icon=":material/folder_shared:", url_path="cases")]
     if user["role"] == "admin":
         pages += [st.Page(admin_pages.render_audit_page, title="Audit log", icon=":material/policy:", url_path="audit"),
                   st.Page(admin_pages.render_users_page, title="Users", icon=":material/group:", url_path="users")]
-    pages.append(st.Page(admin_pages.render_account_page, title="My account", icon=":material/person:",
-                         url_path="account"))
+    pages += [st.Page(admin_pages.render_account_page, title="My account", icon=":material/person:",
+                      url_path="account"),
+              st.Page(help_page.render_help_page, title="Help", icon=":material/help:", url_path="help")]
     page = st.navigation(pages, position="top")
     render_user_panel(user)
     page.run()

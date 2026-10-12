@@ -352,6 +352,22 @@ def render_audit_page():
                            icon=":material/download:", key="dl_all")
 
 
+@st.dialog("Disable this account?")
+def _confirm_disable(target: str, by: str):
+    st.write(f"**{target}** will be signed out immediately and cannot sign in again until an administrator "
+             "re-enables the account. This is recorded in the audit log.")
+    c1, c2 = st.columns(2)
+    if c1.button("Cancel", width="stretch"):
+        st.rerun()
+    if c2.button("Disable account", type="primary", width="stretch", icon=":material/block:"):
+        try:
+            auth.set_active(target, False, by=by)
+        except auth.AuthError as e:
+            st.error(str(e))
+            return
+        st.rerun()
+
+
 def render_users_page():
     me = st.session_state["auth_user"]
     ui.section("User management", "Create accounts, reset passwords and control access. Every change is audited.", "group")
@@ -410,7 +426,7 @@ def render_users_page():
             a, b, c = st.columns([1, 1, 1.35])
             if rec["active"]:
                 if a.button("Disable", icon=":material/block:", width="stretch"):
-                    auth.set_active(target, False, by=me["username"]); st.rerun()
+                    _confirm_disable(target, me["username"])
             elif a.button("Enable", icon=":material/check_circle:", width="stretch"):
                 auth.set_active(target, True, by=me["username"]); st.rerun()
             if b.button("Unlock", icon=":material/lock_open:", width="stretch", disabled=not rec["locked"]):
