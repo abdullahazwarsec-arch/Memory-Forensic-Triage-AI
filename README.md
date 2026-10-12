@@ -1,279 +1,315 @@
-# MemTriage XAI — Explainable AI Memory Forensics Triage
+<div align="center">
 
-## Project Overview
-This project is a final-year university project focused on building an explainable AI-based memory forensics triage system. It detects suspicious or malicious Windows memory profiles using machine learning, explains every prediction in analyst-friendly language, and preserves a verifiable chain of custody for every piece of evidence it handles.
+# 🧬 MemTriage XAI
 
-The system provides:
-- **Raw memory dump analysis** — upload a Windows memory image (`.raw`, `.mem`, `.vmem`, `.dmp`, …) and Volatility 3 extracts the 55 memory features automatically
-- **CSV analysis** — analyse Volatility-derived feature CSVs or built-in sample profiles
-- **Random Forest classification** with an **Isolation Forest** zero-day anomaly check
-- **Dual XAI** — SHAP (global attribution) and LIME (local decision rules) with interactive charts
-- **Forensic chain of custody** — SHA-256/MD5 hashing and re-verification at every processing stage, with a tamper-evident ledger
-- **Mandatory case sessions** — case number, analyst name and timestamps recorded for every action
-- **Automated PDF incident reports** sealed with their own hash
-- A **Streamlit dashboard** with a dark forensic-lab interface
+### Explainable AI triage for Windows memory forensics
 
-## Problem Statement
-Memory forensics is a critical field in cybersecurity, especially when malware is fileless or memory-resident. Traditional forensic workflows often rely on manual analysis, which can be slow and error-prone. This project explores whether machine learning, combined with explainable AI, can assist investigators in identifying suspicious memory behaviour more efficiently — without compromising the evidential integrity that forensic work requires.
+Detect malicious Windows memory snapshots with machine learning, **explain every verdict** in plain English,
+and **prove the evidence was never altered** — from acquisition to the sealed PDF report.
 
-## Project Objectives
-1. Build a machine learning model that classifies memory profiles as benign or malicious.
-2. Use a dual XAI framework to generate interpretable explanations for model decisions.
-3. Accept both raw memory dumps and feature CSVs, converting dumps to features automatically.
-4. Prove that evidence is not modified by the tool, from acquisition to the final report.
-5. Record who analysed what, and when, under a case number.
-6. Simulate adversarial or zero-day-like memory scenarios to evaluate model robustness.
-7. Generate automated, verifiable incident reports for analyst handoff.
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.63-FF4B4B?logo=streamlit&logoColor=white)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-Random%20Forest-F7931E?logo=scikitlearn&logoColor=white)
+![XAI](https://img.shields.io/badge/XAI-SHAP%20%2B%20LIME-10B981)
+![Volatility](https://img.shields.io/badge/Volatility-3-1F6FEB)
+![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)
 
-## Workflow
+<img src="docs/images/screenshots/03_verdict.png" alt="Verdict view: malware score gauge, risk level, zero-day check and evidence integrity" width="900">
 
-```text
- 1. Case session      Analyst opens a case (case number + analyst name required; time recorded)
-        │
- 2. Evidence intake   Sample profile │ Volatility CSV │ raw memory dump
-        │             → SHA-256 + MD5 taken on arrival (acquisition baseline)
-        │
- 3. Extraction        Memory dumps only: 9 Volatility 3 plugins → 55-feature CSV
-        │             → dump re-hashed before and after Volatility; CSV hashed
-        │
- 4. Triage            Hashes re-verified → Random Forest + Isolation Forest → SHAP + LIME
-        │             → the exact feature vector sent to the model is hashed and checked
-        │
- 5. Report            Hashes re-verified → PDF generated → PDF hash recorded (sealed)
+</div>
+
+> **Final-year university project.** A research prototype, not a production forensic tool —
+> automated verdicts must always be reviewed by a qualified analyst.
+
+---
+
+## Contents
+- [Highlights](#highlights)
+- [Screenshots](#screenshots)
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Using the dashboard](#using-the-dashboard)
+- [Project structure](#project-structure)
+- [Evidence integrity & chain of custody](#evidence-integrity--chain-of-custody)
+- [Security controls](#security-controls)
+- [Models, dataset & results](#models-dataset--results)
+- [Command-line tools](#command-line-tools)
+- [Testing](#testing)
+- [Configuration](#configuration)
+- [Known limitations](#known-limitations)
+- [Future work](#future-work)
+- [Documentation](#documentation)
+
+## Highlights
+
+| | |
+|---|---|
+| 🧠 **Analysis** | Raw Windows memory dumps (`.raw .mem .vmem .dmp .lime …`) → Volatility 3 extracts 55 features automatically. Also accepts Volatility feature CSVs and built-in sample profiles. |
+| 🤖 **Detection** | Random Forest malware score with three risk tiers, plus an Isolation Forest **zero-day** anomaly check. *Scan all rows* scores every snapshot at once. |
+| 🔍 **Explainability** | **SHAP** global drivers and **LIME** local rules as interactive charts and plain-English driver cards — *why* the model decided. |
+| 🔗 **Chain of custody** | SHA-256 + MD5 at every stage, an **HMAC-keyed custody ledger**, write-protected working copies, and verification of the hash reported by the acquisition tool. Analysis is **blocked** on any mismatch. |
+| 🧾 **Provenance** | Where the evidence came from (device, custodian, location, collector, time, tool) and who it is prepared for (recipient, purpose, reference) — sealed into the ledger and the report. |
+| 📄 **Sealed reports** | PDF dossier with verdict, explanations, provenance, response actions and the full custody ledger; its SHA-256 is recorded in the ledger, the audit log and a `.sha256` sidecar. |
+| 🔐 **Accounts & audit** | Sign-in with roles (Administrator / Analyst), lockout, idle timeout and an **HMAC-chained, tamper-evident audit log** with an Audit log page for administrators. |
+| 🧭 **Usability** | Guided start, Cases page to reopen past work, Help page with glossary & FAQ, and an **offline help assistant** that explains your result. Emerald theme with an interactive background. |
+
+## Screenshots
+
+| Sign in | Getting started |
+|:---:|:---:|
+| <img src="docs/images/screenshots/01_sign_in.png" width="440"> | <img src="docs/images/screenshots/02_triage_start.png" width="440"> |
+| **Explainability (SHAP)** | **Provenance** |
+| <img src="docs/images/screenshots/04_explainability.png" width="440"> | <img src="docs/images/screenshots/05_provenance.png" width="440"> |
+| **Cases** | **Audit log (administrators)** |
+| <img src="docs/images/screenshots/06_cases.png" width="440"> | <img src="docs/images/screenshots/07_audit_log.png" width="440"> |
+| **Offline help assistant** | |
+| <img src="docs/images/screenshots/08_assistant.png" width="440"> | |
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["Sign in"] --> B["Open case<br/>recipient · purpose"]
+    B --> C["Evidence origin<br/>+ acquisition-tool hash"]
+    C --> D{"Evidence type"}
+    D -->|"Sample / CSV"| E["Intake checks<br/>SHA-256 + MD5"]
+    D -->|"Memory dump"| F["Volatility 3<br/>9 plugins → 55 features"]
+    F --> E
+    E --> G["Feature gate<br/>55 features valid?"]
+    G --> H["Random Forest<br/>+ Isolation Forest"]
+    H --> I["SHAP + LIME<br/>explanations"]
+    I --> J["Sealed PDF report"]
+    E -. re-verified at every stage .-> L[("HMAC custody ledger")]
+    H -.-> L
+    J -.-> L
+    A -. every event .-> M[("HMAC-chained audit log")]
 ```
 
-If any re-computed hash does not match the acquisition hash, analysis and report generation are **blocked** and the violation is logged.
+1. **Sign in** — every action is attributed to an authenticated account.
+2. **Open a case** — case number plus who the findings are prepared for.
+3. **Record the origin** — where the evidence came from; optionally the hash printed by the acquisition tool.
+4. **Load evidence** — fingerprinted on arrival (SHA-256 + MD5); uploads become write-protected working copies. Dumps are converted to 55 features with Volatility 3, hashed before and after.
+5. **Analyse** — hashes are re-verified, the 55 features are validated, then the models score the snapshot and SHAP/LIME explain it.
+6. **Report** — everything is re-verified once more, the PDF is generated and its hash recorded (sealed).
 
-## Project Structure
+If any re-computed hash differs from the acquisition hash, analysis and report generation are **blocked** and the violation is logged.
 
-```text
-Memory_Forensics_Project/
-├── app.py                      # Main Streamlit dashboard (case sessions, triage, XAI, reporting)
-├── memdump_extractor.py        # Volatility 3 memory dump → 55-feature CSV extractor (also a CLI)
-├── evidence_integrity.py       # Hashing, HMAC custody ledger, manifest verifier, model hash pinning
-├── input_validation.py         # Intake checks (size, CSV structure, memory-image signatures) and feature gate
-├── audit_log.py                # HMAC-chained, tamper-evident audit log handler, verifier and parser
-├── auth.py                     # User accounts: PBKDF2 password hashing, roles, lockout, sealed account store
-├── admin_pages.py              # Sign-in, first-run setup, Audit log, Users and My account pages
-├── ui_theme.py                 # Dashboard theme and reusable UI components
-├── run_app.bat                 # Double-click launcher for Windows
-├── requirements.txt            # Python dependencies
-├── README.md                   # Project documentation
-├── .streamlit/config.toml      # Theme, upload limit (8 GB) and toolbar settings
-│
-├── docs/                       # Project documentation
-│   └── Memory_Forensics_Commands_And_Execution_Runbook.docx  # Every command, explained
-│
-├── data/                       # Forensic datasets & evaluation telemetry
-│   ├── Obfuscated-MalMem2022.csv   # Primary benchmark dataset (not committed — download separately)
-│   ├── apt_zero_day.csv            # Simulated zero-day memory scenario
-│   ├── simulated_cobalt_strike.csv # Simulated memory beaconing dump
-│   └── test_samples/               # Curated evaluation profiles for triage testing
-│
-├── models/                     # Trained ML models
-│   ├── random_forest_model.pkl      # Binary classifier (55 memory artefacts)
-│   ├── isolation_forest.pkl         # Zero-day unsupervised anomaly detection
-│   └── multiclass_random_forest.pkl # Multi-class malware family model
-│
-├── scripts/                    # Training, evaluation & utility pipelines
-│   ├── train_model.py / train_multiclass.py   # Model training
-│   ├── evaluate_model.py / benchmark.py       # Evaluation, cross-validation, model comparison
-│   ├── explain_model.py / test_lime.py        # SHAP / LIME explainability scripts
-│   ├── generate_report.py                     # Standalone PDF report generator
-│   ├── simulate_zeroday.py / generate_synthetic_threats.py
-│   ├── extract_confident_samples.py / extract_real_benign.py
-│   ├── verify_data_integrity.py / pin_model_hashes.py
-│   ├── manage_users.py                        # Account recovery from the command line
-│   └── create_viva_doc.py / create_commands_runbook_docx.py   # build the Word documents
-│
-├── outputs/                    # Evaluation artefacts and generated reports
-│   ├── cases/                       # Per-case workspaces (generated, not committed)
-│   ├── extracted/                   # Volatility extraction output (generated, not committed)
-│   ├── forensic_report_*.pdf        # Sealed incident reports (+ .sha256 sidecars)
-│   ├── confusion_matrix.png, roc_curve.png, shap_summary.png
-│   ├── system_workflow_diagram.png, data_flow_diagram.png
-│   └── model_comparison.csv
-│
-└── logs/
-    ├── triage_audit.log             # HMAC-chained audit log: case sessions, custody events, verdicts
-    └── triage_audit.log.head        # Keyed line count + last chain value (detects tail truncation)
-```
+## Quick start
 
-## Dataset
-The models are trained on **CIC-MalMem2022** (`Obfuscated-MalMem2022.csv`): 58,596 memory snapshots described by 55 Volatility-derived features (processes, DLLs, handles, injected code, hidden processes, services, kernel callbacks), covering benign snapshots and 15 malware families across ransomware, spyware and trojan categories. The CSV is not committed because of its size; place it in `data/` before training.
-
-## Setup Instructions
-For a full, explained list of every command (setup, dashboard, Volatility, hash verification, scripts, Git and troubleshooting), see [`docs/Memory_Forensics_Commands_And_Execution_Runbook.docx`](docs/Memory_Forensics_Commands_And_Execution_Runbook.docx).
-
-1. Create and activate a virtual environment (Python 3.11 recommended):
+**Requirements:** Windows 10/11 (Linux/macOS also work for the dashboard), Python 3.11, ~2 GB disk for packages.
 
 ```bash
+git clone https://github.com/abdullahazwarsec-arch/Memory-Forensic-Triage-AI.git
+cd Memory-Forensic-Triage-AI
+
 python -m venv venv
-venv\Scripts\activate            # Windows
-```
-
-2. Install dependencies (includes Volatility 3):
-
-```bash
+venv\Scripts\activate            # Windows   (Linux/macOS: source venv/bin/activate)
 pip install -r requirements.txt
 ```
 
-3. (Optional) Re-train and evaluate the models:
-
-```bash
-python scripts/train_model.py
-python scripts/evaluate_model.py
-python scripts/explain_model.py
-python scripts/pin_model_hashes.py   # re-pin model hashes after any re-training, then commit models/model_hashes.json
-```
-
-4. Run the dashboard — double-click `run_app.bat`, or:
+Run the dashboard — double-click **`run_app.bat`**, or:
 
 ```bash
 streamlit run app.py
 ```
 
-Then open http://localhost:8501. On the very first start the dashboard asks you to create the **administrator account**; after that every user signs in.
+Open <http://localhost:8501>. **On the first start you create the administrator account**; administrators then add analysts on the **Users** page.
 
-5. (Optional) Extract features from a memory dump on the command line:
-
-```bash
-python memdump_extractor.py path\to\memory.raw
-```
-
-This prints the dump's SHA-256 before and after extraction and saves the feature CSV with a `.sha256` sidecar.
-
+> The trained models are included, so the dashboard works immediately with the built-in sample profiles.
+> The training dataset (`Obfuscated-MalMem2022.csv`, CIC-MalMem2022) is only needed to re-train — place it in `data/`.
 > The first Volatility run on a new Windows version needs internet access to download kernel symbol tables.
 
-## How the App Works
-0. **Sign in.** Every page requires an account (see [User Accounts & Access Control](#user-accounts--access-control)).
-1. **Open a case session.** Enter a case number, the **recipient the evidence is prepared for** (name, organisation, purpose, reference) plus an optional unit and notes; the analyst is the signed-in account. The opening time is recorded in local time (with UTC offset) and UTC. Nothing else is available until a case is open; closing the case records the closing time.
-2. **Record the evidence origin** — source device/host, owner/custodian, location, who collected it, when and with which tool — then **load evidence**: a sample profile, a Volatility CSV, or a raw memory dump (uploaded or referenced by path). The evidence is hashed on arrival and gets an evidence item ID; uploads are preserved as write-protected working copies.
-3. **Analyse a snapshot.** The dashboard shows a verdict panel (malware score gauge, risk level, classification, zero-day check, integrity status) and tabs for:
-   - **Overview** — recommended response steps and the top reasons for the verdict
-   - **Explainability** — interactive SHAP and LIME charts, driver cards and full tables
-   - **Provenance** — where the evidence came from and who it is prepared for (sealed in the ledger at acquisition; also in the PDF and manifest)
-   - **Chain of custody** — case/evidence/analyst details, all hashes, the custody ledger, manifest download and on-demand re-verification
-   - **Report** — download the sealed PDF and see its hash
-   - **Audit log** — recent audit entries
-4. **Scan all rows** scores every snapshot in the evidence file at once.
+## Using the dashboard
 
-## User Accounts & Access Control
-| Role | Pages |
-|---|---|
-| **Analyst** | Triage, My account |
-| **Administrator** | Triage, **Audit log**, **Users**, My account |
+| Page | Who | What you do there |
+|---|---|---|
+| **Triage** | everyone | Open a case → record the evidence origin → load a sample, CSV or memory dump → *Analyse snapshot* → read the verdict, explanations, provenance and custody ledger → download the sealed report |
+| **Cases** | everyone | Search all cases, re-verify each evidence item, download sealed reports, *Continue this case* |
+| **Audit log** | administrators | Sign-ins & sign-outs, failed attempts, lockouts, account changes and every recorded event — with integrity status, filters and CSV export |
+| **Users** | administrators | Create accounts, disable/enable, unlock, change roles, reset passwords |
+| **My account** | everyone | Change password, see your own sign-in history |
+| **Help** | everyone | Five-step guide, how to read the verdict, glossary and FAQ |
 
-- **First run** creates the administrator. Administrators create further accounts on the **Users** page with a temporary password; the user must choose a new one at first sign-in. Administrators can also disable/enable accounts, change roles, unlock accounts and reset passwords (an administrator cannot disable or demote themselves, and at least one active administrator always remains).
-- **Passwords** are stored only as salted PBKDF2-HMAC-SHA256 hashes (600,000 iterations); at least 10 characters with letters and digits, not containing the username.
-- **Lockout:** 5 consecutive failed sign-ins lock an account for 15 minutes. Sign-in errors are generic, and unknown usernames take the same time to reject, so accounts cannot be probed.
-- **Sessions** end on sign-out, after 30 minutes of inactivity, or immediately when an administrator disables the account. Signing out closes any open case session.
-- **Account store** `keys/users.json` (git-ignored) is sealed with an HMAC under the ledger key; a hand-edited file disables sign-in until restored.
-- **Case attribution:** the analyst on case records, custody ledgers and PDF reports is the authenticated account (`Full Name (username)`), no longer a typed name.
+**Risk tiers:** **Normal** < 40 % · **Suspicious** 40–75 % · **High risk** ≥ 75 %. The **Assistant** button (bottom-right) answers
+questions offline — try *“explain my result”* or *“what should I do next?”*.
 
-### Audit log page
-Administrators see every sign-in event read from the HMAC-chained audit log, with each entry's integrity status:
-- **Sign-ins & sign-outs** — successful and failed sign-ins (with reason), lockouts, sign-outs, idle timeouts and revoked sessions, with session duration and client address; filter by user, event and date range; CSV export.
-- **Account administration** — accounts created, passwords changed/reset, roles changed, accounts disabled/enabled/unlocked, and who did it.
-- **All audit events** — the complete log (case sessions, custody events, verdicts, reports, validation, model checks) with category/level filters and search.
+## Project structure
 
-If the log's chain ever fails verification, an administrator can **archive it unchanged** (`logs/archive/`, with a verification report) and start a new chain whose first entry records the archived file's SHA-256 — nothing is deleted or re-signed. Writes are serialised with a file lock and always chain to the last line on disk, so several writers or processes cannot fork the chain (`python audit_log.py archive --reason "..."` does the same from the command line).
-
-Each user can see their own recent sign-in activity on **My account**. Closing the browser tab without signing out is not recorded as a sign-out; the session simply expires.
-
-Account recovery (e.g. the only administrator is locked out) — every action is audited as `cli:<OS user>`:
-
-```bash
-python scripts/manage_users.py list
-python scripts/manage_users.py reset-password <username>
-python scripts/manage_users.py unlock <username>
-python scripts/manage_users.py create <username> "<Full Name>" --role admin
+```text
+Memory-Forensic-Triage-AI/
+├── app.py                         # Streamlit dashboard: triage workflow, models, SHAP/LIME, PDF report, Cases page
+├── run_app.bat                    # Double-click launcher (Windows)
+├── requirements.txt               # Runtime dependencies
+├── requirements-dev.txt           # + pytest and python-docx (tests and documentation)
+├── pytest.ini
+│
+├── memtriage/                     # Supporting package
+│   ├── evidence_integrity.py      # Hashing, HMAC custody ledger, manifest verifier, model hash pinning
+│   ├── audit_log.py               # HMAC-chained audit log: writer, verifier, parser, archive CLI
+│   ├── input_validation.py        # Intake checks (size, CSV, memory-image signatures) + 55-feature gate
+│   ├── memdump_extractor.py       # Volatility 3 dump → 55-feature CSV (also a CLI)
+│   ├── auth.py                    # Accounts: PBKDF2 passwords, roles, lockout, sealed account store
+│   ├── admin_pages.py             # Sign-in, first-run setup, Audit log, Users, My account pages
+│   ├── help_page.py               # Help & glossary page
+│   ├── assistant.py               # Offline help assistant
+│   ├── ui_theme.py                # Emerald theme and UI components
+│   └── assets/background.js       # Interactive background (canvas)
+│
+├── scripts/
+│   ├── training/                  # train_model.py, train_multiclass.py
+│   ├── evaluation/                # evaluate_model.py, benchmark.py, explain_model.py, lime_example.py, verify_data_integrity.py
+│   ├── data/                      # sample-profile generators, zero-day simulator, class-balance check
+│   ├── reports/                   # standalone PDF report examples
+│   ├── admin/                     # manage_users.py (account recovery), pin_model_hashes.py
+│   └── docs/                      # build the Word documents in docs/
+│
+├── models/                        # Trained models + model_hashes.json (pinned SHA-256)
+├── data/                          # Sample profiles and simulated scenarios (dataset CSV not committed)
+├── tests/                         # pytest suite (79 tests)
+├── docs/                          # Viva guide, commands runbook, figures, screenshots, results
+│
+├── outputs/                       # Generated locally: cases, extractions, sealed reports   (git-ignored)
+├── logs/                          # Audit log and archived logs                             (git-ignored)
+└── keys/                          # Ledger HMAC key and account store — never share         (git-ignored)
 ```
 
-## Help Assistant
-A floating **Assistant** button (bottom-right, every page after sign-in) answers questions in plain English: how to use each feature, forensic terms (hash, chain of custody, SHAP, LIME, Isolation Forest…), the FAQ, and the **current analysis** — *“explain my result”*, *“what should I do next?”*, *“is the evidence intact?”*. It runs **fully offline** (`assistant.py`): questions are matched to topics with blended character- and word-level TF-IDF (tolerant of typos, and it says so when it is unsure); no AI service, network or API key is used. It only sees a summary of the result (risk, score, top reasons, integrity, progress) — never hashes, file names, provenance or raw evidence. Each question is recorded in the audit log (topic, match score, first 120 characters).
+## Evidence integrity & chain of custody
 
-## Chain of Custody & Evidence Integrity
 Every artefact is fingerprinted with SHA-256 and MD5 and re-verified at each stage:
 
 | Stage | What is verified |
 |---|---|
-| Acquisition | Hash of the exact bytes received (the baseline) |
-| Working copy | Write-protected copy of uploaded evidence matches the baseline |
-| Pre-/Post-extraction | Memory dump unchanged by Volatility |
+| Acquisition | Evidence hashed on arrival — the baseline |
+| Acquisition verification | Optional hash reported by the acquisition tool compared with the computed hash |
+| Provenance | Origin and recipient sealed into the ledger |
+| Working copy | Uploads written to a write-protected copy and re-hashed |
+| Pre-/post-extraction | Memory dump hashed immediately before and after Volatility |
 | Derived data | Feature CSV hashed and linked to the dump's hash |
-| Data load | CSV re-hashed when parsed |
-| Pre-analysis | Evidence and CSV re-hashed before inference |
-| Analysis input | The exact feature vector sent to the model matches the verified file |
-| Pre-report | Everything re-hashed before the PDF is built |
-| Report | PDF hash recorded in the ledger, audit log and a `.sha256` sidecar |
+| Input validation | Feature check result recorded (and any analyst acknowledgement) |
+| Pre-analysis / analysis input | Evidence re-hashed; the exact feature vector sent to the model matches the verified file |
+| Pre-report / report | Everything re-hashed; the PDF hash recorded (sealed) |
 
-Each ledger entry records the analyst and is chained to the previous entry by an **HMAC-SHA256** link keyed with a secret ledger key, so editing any recorded entry breaks the chain, and the chain cannot be rebuilt without the key. The key is created on first run at `keys/ledger_hmac.key` (git-ignored, write-protected) or can be supplied as 64+ hex characters in the `FORENSICS_LEDGER_KEY` environment variable. Back it up securely — manifests sealed with a lost key can no longer be verified. Per-case records are kept in `outputs/cases/<case>/`:
-- `case.json` — sessions (analyst, opened/closed times) and evidence items
-- `<evidence-id>/custody_manifest.json` — the full ledger for that evidence item
-
-Any file can be verified independently with `certutil -hashfile <file> SHA256` (Windows) or `sha256sum <file>`. A custody manifest is re-verified (every HMAC link recomputed) with:
+Ledger entries are linked with **HMAC-SHA256** keyed with a secret ledger key (`keys/ledger_hmac.key`, created on first run,
+or `FORENSICS_LEDGER_KEY`), so the ledger cannot be edited and re-chained without the key. Records per case:
+`outputs/cases/<case>/case.json` and `outputs/cases/<case>/<evidence-id>/custody_manifest.json`.
 
 ```bash
-python evidence_integrity.py verify outputs/cases/<case>/<evidence-id>/custody_manifest.json
+python -m memtriage.evidence_integrity verify outputs/cases/<case>/<evidence-id>/custody_manifest.json
+certutil -hashfile <report>.pdf SHA256          # Windows   (Linux/macOS: sha256sum <report>.pdf)
 ```
 
-### Model integrity
-Models are pickle files, and unpickling a tampered file can execute code. The dashboard therefore reads each model once, checks its SHA-256 against `models/model_hashes.json`, and only then unpickles those verified bytes. An unpinned or modified classifier stops the dashboard; an unverified Isolation Forest is disabled with a warning. Both outcomes are written to the audit log.
+> Back up `keys/` securely — manifests and logs sealed with a lost key can no longer be verified.
 
-### Input validation
-Evidence is checked before a case record is created and again before it reaches the models:
+## Security controls
 
-| Gate | Check | On failure |
-|------|-------|------------|
-| Feature CSV upload | ≤ 50 MB, UTF-8 text with no binary data, parsable CSV, header contains model features | Rejected, logged as `INTAKE REJECTED` |
-| Memory image (upload or path) | Supported extension, ≥ 64 MB, file signature (`.dmp` must be `PAGEDU64`/`PAGEDUMP`, `.lime` must be `EMiL`; archives, executables, documents and E01 containers are refused) | Rejected, logged |
-| Working copy | Free disk space ≥ image size + 1 GB | Rejected — analyse in place via the path option |
-| Feature gate | All 55 model features present, numeric, finite and non-negative | Missing / empty / non-numeric values: analyst must acknowledge before analysis. More than 20% of features unusable, or any infinite or negative value: **analysis blocked** |
+| Control | Protects against |
+|---|---|
+| **Accounts** — PBKDF2-SHA256 (600k iterations), roles, 5-attempt lockout (15 min), 30-min idle timeout, forced password change, HMAC-sealed account store | Unauthorised use; self-declared analyst names; hand-edited accounts |
+| **HMAC-chained audit log** — file-locked writes, genesis anchor, keyed head file, newline escaping; broken logs are archived unchanged, never re-signed | Edited, inserted, deleted, reordered or truncated log lines; forged log lines via crafted input |
+| **Intake checks** — size limits, CSV structure, memory-image file signatures, disk-space guard | Renamed archives/executables, binary or unrelated files, disk exhaustion |
+| **Feature gate** — infinite/negative values or > 20 % missing features block analysis; smaller gaps need analyst acknowledgement | Inputs crafted to force a "benign" verdict |
+| **Model hash pinning** — models are verified against `models/model_hashes.json` before unpickling | Replaced or tampered model files (pickle code execution) |
+| **Localhost binding** and HTML escaping of all user input | Network access to evidence; XSS / markup injection |
+| **Offline assistant** — no network calls; sees only a result summary | Case data leaving the machine |
 
-Every result is recorded in the custody ledger (`Input Validation` stage) and the audit log; an acknowledgement records the analyst's name. The result also appears in the PDF report.
+## Models, dataset & results
 
-### Tamper-evident audit log
-Each line of `logs/triage_audit.log` ends with `CHAIN=<HMAC-SHA256>` over the previous chain value and the line, keyed with the ledger key. Editing, inserting, deleting or reordering a line breaks the chain. The first chained line (`AUDIT LOG CHAIN GENESIS`) stores the size and SHA-256 of all earlier unchained history, and a keyed `.head` file detects lines removed from the end. Line breaks in logged values are escaped, so crafted input cannot forge log lines. The dashboard sidebar shows the chain status; verify manually with:
+**Dataset — [CIC-MalMem2022](https://www.unb.ca/cic/datasets/malmem-2022.html):** 58,596 memory snapshots described by 55
+Volatility-derived features (processes, DLLs, handles, injected code, hidden processes, services, kernel callbacks), benign
+plus 15 malware families across ransomware, spyware and trojan categories.
+
+| Model | Accuracy | Precision | Recall | F1 | ROC-AUC | CV F1 (mean ± sd) |
+|---|---|---|---|---|---|---|
+| **Random Forest** (dashboard) | 0.9999 | 0.9998 | 1.0000 | 0.9999 | 1.0000 | 0.9998 ± 0.0001 |
+| Logistic Regression (baseline) | 0.9987 | 0.9985 | 0.9990 | 0.9987 | 0.9999 | 0.9991 ± 0.0001 |
+
+<p align="center">
+  <img src="docs/images/confusion_matrix.png" width="32%">
+  <img src="docs/images/roc_curve.png" width="32%">
+  <img src="docs/images/shap_summary.png" width="32%">
+</p>
+
+> ⚠️ These scores are **optimistic** — see [Known limitations](#known-limitations). The **Isolation Forest** zero-day layer
+> flags memory unlike anything seen in training.
+
+**Explainability:** SHAP (TreeExplainer) shows how much each feature pushed the verdict towards malware or benign; LIME fits
+local rules around the snapshot as an independent check. Both appear as diverging charts (red = towards malware,
+blue = towards benign) with plain-English descriptions, and both are included in the PDF report.
+
+**Memory dump extraction:** `memtriage/memdump_extractor.py` runs `windows.info` plus 9 Volatility 3 plugins
+(`pslist`, `dlllist`, `handles`, `ldrmodules`, `malfind`, `psxview`, `modules`, `svcscan`, `callbacks`). A few features are
+approximations because Volatility 3 lacks some checks used to build the dataset (psxview session/desktop views, de-duplicated
+service records, `malfind.protection` as a sum of VAD protection codes). Windows images only.
+
+## Command-line tools
+
+Run from the project root with the virtual environment active.
+
+| Task | Command |
+|---|---|
+| Memory dump → feature CSV | `python -m memtriage.memdump_extractor "<dump>" [--out <folder>]` |
+| Verify the audit log | `python -m memtriage.audit_log verify` |
+| Archive a broken audit log | `python -m memtriage.audit_log archive --reason "<why>"` |
+| Verify a custody manifest | `python -m memtriage.evidence_integrity verify <custody_manifest.json>` |
+| Account recovery | `python scripts/admin/manage_users.py list \| unlock <user> \| reset-password <user> \| create <user> "<Name>" --role admin` |
+| Re-pin model hashes (after re-training) | `python scripts/admin/pin_model_hashes.py` |
+| Train / evaluate | `python scripts/training/train_model.py` · `python scripts/evaluation/evaluate_model.py` |
+| Dataset audit | `python scripts/evaluation/verify_data_integrity.py` |
+| Rebuild the Word documents | `python scripts/docs/create_viva_doc.py` · `python scripts/docs/create_commands_runbook_docx.py` |
+
+> `train_model.py` and `evaluate_model.py` overwrite `models/random_forest_model.pkl`. Re-pin the hashes afterwards,
+> or the dashboard will (correctly) refuse to load the new model.
+
+## Testing
 
 ```bash
-python audit_log.py verify
+pip install -r requirements-dev.txt
+python -m pytest
 ```
 
-## Memory Dump Feature Extraction
-`memdump_extractor.py` runs `windows.info` followed by 9 Volatility 3 plugins (`pslist`, `dlllist`, `handles`, `ldrmodules`, `malfind`, `psxview`, `modules`, `svcscan`, `callbacks`) and converts their output into the 55 CIC-MalMem2022 features. Volatility 3 lacks some checks used to build the original dataset, so a few features are approximations:
-- `psxview` session / desktop-thread views are derived from other views
-- service records are de-duplicated before counting
-- `malfind.protection` is the sum of VAD protection codes
+**79 tests** (~35 s) covering the custody ledger and forgery detection, model pinning, intake and feature gates, audit-log
+tampering, duplicate writers and multi-process writes, archiving, the assistant's topic matching, and end-to-end dashboard
+flows (first-run setup, sign-in, lockout, idle timeout, revocation, a sealed triage run). Tests run against a throw-away
+key, account store, audit log and output folder — real evidence is never touched.
 
-Only Windows memory images are supported.
+## Configuration
 
-## Evaluation and Results
-The evaluation pipeline generates a confusion matrix, ROC curve, classification report, cross-validation metrics and a comparative model performance table (`outputs/`).
+| Setting | Purpose |
+|---|---|
+| `.streamlit/config.toml` | Theme, `localhost` binding, upload limit (8 GB) |
+| `FORENSICS_LEDGER_KEY` | Ledger HMAC key as 64+ hex characters (instead of `keys/ledger_hmac.key`) |
+| `MEMTRIAGE_USERS_FILE` | Alternative account-store location |
+| `MEMTRIAGE_AUDIT_LOG` | Alternative audit-log location |
+| `MEMTRIAGE_OUTPUT_DIR` | Alternative folder for cases, extractions and reports |
 
-## Explainability and XAI Framework
-- **SHAP** (TreeExplainer) quantifies how much each memory feature pushed this verdict toward malware or benign.
-- **LIME** fits local surrogate rules around the analysed snapshot as an independent check.
+## Known limitations
 
-Both are shown as interactive diverging bar charts (red = toward malware, blue = toward benign) with plain-English descriptions of each feature, and both are included in the PDF report.
+- **Optimistic accuracy.** Scores come from a random train/test split. Each malware sample has ~10 near-identical snapshots and the dataset has 534 duplicate rows, so near-copies appear in both train and test.
+- **Shortcut learning.** Benign snapshots come from essentially one machine configuration (e.g. `svcscan.nservices` only ranges 388–395), so the model largely learns "differs from that benign machine". Benign-labelled profiles can score high, and real dumps from other Windows versions can be misjudged. SHAP/LIME correctly reveal this — they explain the model, not ground truth.
+- **Aggregate features only.** The verdict is based on 55 counts; the dashboard cannot yet point to the specific malicious process.
+- **Keyed, not signed.** The ledger and audit log use a shared secret: anyone who can read `keys/` could forge them. There is no asymmetric signature or trusted timestamp, and an old log + head pair could be restored together.
+- **Local accounts.** No multi-factor authentication, plain HTTP on `localhost`, and reloading the browser signs you out. Anyone with access to `keys/` can reset accounts.
+- **Scope.** Windows memory images only; uploaded dumps are held in memory (use the path option for large dumps); Volatility needs internet on first use.
 
-## Known Limitations
-These are findings from testing the current models. They are documented so results are interpreted correctly.
-- **Optimistic accuracy.** The 100% test accuracy comes from a random train/test split. Each malware sample has ~10 near-identical snapshots and the dataset contains 534 duplicate rows, so near-copies appear in both train and test.
-- **Shortcut learning.** Only 11 service/module/callback count features reach 99.99% accuracy, and benign `svcscan.nservices` only ranges from 388 to 395, because the benign snapshots come from essentially one machine configuration. The model largely learns "differs from that benign machine" rather than malware behaviour. As a result, some benign-labelled sample profiles score as high risk, and real dumps from other Windows versions can be misjudged.
-- **Explanations reflect this bias.** SHAP/LIME correctly show that service and driver counts drive the verdict; they explain the model, not ground truth.
-- **Custody ledger is keyed, not signed.** Rebuilding the chain requires the ledger key, but anyone who can read `keys/ledger_hmac.key` could still forge a ledger; there is no asymmetric signature or trusted timestamp yet. Model pins protect against replaced model files, not against someone who can also edit `model_hashes.json` and the code.
-- **Audit log head can be rolled back.** Someone with file access who saved an older log and `.head` pair could restore both together; only an external copy of the head (e.g. in the case notes) rules this out.
-- **Local accounts only.** Sign-in uses local accounts without multi-factor authentication and the dashboard is served over plain HTTP on `localhost`. Anyone with file access to `keys/` can reset accounts with `scripts/manage_users.py`; put TLS and SSO/MFA in front before exposing it beyond the examiner's machine.
-- Volatility symbol downloads require internet on first use; uploaded dumps are held in memory (use the path option for large dumps); Windows images only.
+## Future work
 
-## Future Work
-- Re-train with duplicates removed and a split grouped by sample; add benign dumps from many machines and OS versions; normalise environment-specific count features.
-- Validate on real external memory dumps; calibrate probabilities; warn when an input falls outside the training distribution.
-- Show per-process Volatility findings (injected regions, hidden processes) with PIDs as evidence alongside the verdict.
-- Verify against the acquisition tool's hash at intake; sign custody manifests and add trusted timestamps; add user authentication.
-- Measure SHAP/LIME agreement and LIME stability; add base-value breakdowns and counterfactual explanations; integrate the multiclass family model.
-- Record tool and model versions (including the model file hash) in each report for reproducibility.
+- Re-train with duplicates removed, a split grouped by sample, and benign dumps from many machines and Windows versions; calibrate probabilities and warn on out-of-distribution input.
+- Show per-process findings (injected regions, hidden processes, PIDs) from the saved Volatility output alongside the verdict.
+- Integrate the trained multi-class family model (ransomware / spyware / trojan).
+- Digitally sign reports and manifests with trusted (RFC 3161) timestamps.
+- MFA/SSO and HTTPS for multi-user deployments; encrypted evidence storage and retention policies.
+- Case export/import and machine-readable (JSON/STIX) findings.
 
-## Notes
-This project is a practical final-year demonstration of explainable AI for memory forensics. It is a research prototype, not a production forensic tool; automated verdicts must be reviewed by a qualified analyst.
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/Memory_Forensics_Commands_And_Execution_Runbook.docx`](docs/Memory_Forensics_Commands_And_Execution_Runbook.docx) | Every command explained: setup, dashboard, dumps, integrity, scripts, accounts, tests, Git, troubleshooting |
+| [`docs/Memory_Forensics_AI_Triage_Viva_Defense_Guide.docx`](docs/Memory_Forensics_AI_Triage_Viva_Defense_Guide.docx) | Architecture, data pipeline, models, XAI, viva questions and a live-demo script |
+| [`docs/images/`](docs/images) | Evaluation figures, diagrams and screenshots |
+| [`docs/results/model_comparison.csv`](docs/results/model_comparison.csv) | Model comparison metrics |
+
+---
+
+<sub>Built as a final-year project in digital forensics and explainable AI. Dataset: CIC-MalMem2022, Canadian Institute
+for Cybersecurity, University of New Brunswick.</sub>
