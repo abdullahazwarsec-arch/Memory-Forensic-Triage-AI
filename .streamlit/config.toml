@@ -1,4 +1,8 @@
 [server]
+# Serve only on this machine. Evidence and the local-path input must not be
+# reachable from the network (Streamlit otherwise listens on all interfaces).
+address = "localhost"
+
 # Allow raw memory dumps to be uploaded (size in MB). Larger dumps can be
 # analysed by entering their local path instead of uploading.
 maxUploadSize = 8192
@@ -8,14 +12,20 @@ maxUploadSize = 8192
 toolbarMode = "minimal"
 
 [theme]
-# "Forensic Ops" dark theme (matches ui_theme.py tokens)
+# "Emerald Forensics" theme (matches ui_theme.py tokens)
 base = "dark"
-primaryColor = "#22d3ee"
-backgroundColor = "#070b10"
-secondaryBackgroundColor = "#131d29"
-textColor = "#e6edf3"
-borderColor = "#1f2b3a"
+primaryColor = "#10b981"
+backgroundColor = "#070d0b"
+secondaryBackgroundColor = "#0f1a16"
+textColor = "#e3f2ec"
+borderColor = "#1f332c"
+linkColor = "#34d399"
+codeBackgroundColor = "#0b1512"
+dataframeHeaderBackgroundColor = "#0f1a16"
+showSidebarBorder = true
 baseFontSize = 17
-baseRadius = "10px"
-font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+baseRadius = "12px"
+buttonRadius = "full"
+headingFontWeights = [800, 800, 700, 700, 700, 700]
+font = "Plus Jakarta Sans:https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
 codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"

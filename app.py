@@ -11,12 +11,13 @@ import uuid
 import html
 import logging
 import hashlib
+import hmac
+import time
 import shutil
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import joblib
 import shap
 from lime.lime_tabular import LimeTabularExplainer
 
@@ -29,9 +30,15 @@ from reportlab.lib import colors
 
 import altair as alt
 
-import memdump_extractor
-import ui_theme as ui
-import evidence_integrity as ei
+from memtriage import memdump_extractor
+from memtriage import ui_theme as ui
+from memtriage import evidence_integrity as ei
+from memtriage import input_validation as iv
+from memtriage import audit_log
+from memtriage import auth
+from memtriage import admin_pages
+from memtriage import help_page
+from memtriage import assistant
 
 
 # ── SECTION 2: PATHS & FOLDER SETUP ──────────────────────────────────────────
@@ -50,7 +57,7 @@ ISO_PATH    = (
     if os.path.exists(os.path.join(MODEL_DIR, "isolation_forest.pkl"))
     else os.path.join(BASE_DIR, "isolation_forest.pkl")
 )
-OUTPUT_DIR  = os.path.join(BASE_DIR, "outputs")
+OUTPUT_DIR  = os.environ.get("MEMTRIAGE_OUTPUT_DIR") or os.path.join(BASE_DIR, "outputs")
 LOG_DIR     = os.path.join(BASE_DIR, "logs")
 SAMPLES_DIR = os.path.join(DATA_DIR, "test_samples")
 CASES_DIR   = os.path.join(OUTPUT_DIR, "cases")   # per-case evidence copies, CSVs, manifests
@@ -63,14 +70,12 @@ os.makedirs(SAMPLES_DIR, exist_ok=True)
 
 # ── SECTION 3: AUDIT LOGGER SETUP ────────────────────────────────────────────
 # Every prediction is written to a log file with timestamp
-# This is chain-of-custody — a record of every analysis ever run
-logging.basicConfig(
-    filename  = os.path.join(LOG_DIR, "triage_audit.log"),
-    level     = logging.INFO,
-    format    = "%(asctime)s | %(levelname)s | %(message)s",
-    datefmt   = "%Y-%m-%d %H:%M:%S",
-)
+# This is chain-of-custody — a record of every analysis ever run.
+# Each line is HMAC-chained to the previous one (see audit_log.py).
+AUDIT_LOG_PATH = os.environ.get("MEMTRIAGE_AUDIT_LOG") or os.path.join(LOG_DIR, "triage_audit.log")
+audit_log.setup(AUDIT_LOG_PATH)
 logger = logging.getLogger("triage")
+admin_pages.AUDIT_LOG_PATH = AUDIT_LOG_PATH
 
 
 # ── SECTION 4: FORENSIC FEATURE DICTIONARY & HUMAN TRANSLATOR ────────────────
@@ -306,15 +311,38 @@ def load_rf_model():
     if not os.path.exists(MODEL_PATH):
         st.error(f"Model not found at: {MODEL_PATH}")
         st.stop()
-    return joblib.load(MODEL_PATH)
+    try:
+        model, sha256 = ei.load_verified_model(MODEL_PATH)
+    except ei.ModelIntegrityError as e:
+        logger.error(f"MODEL INTEGRITY FAILURE | {e}")
+        st.error(f"**Model integrity check failed — refusing to load the classifier.** {e}", icon=":material/gpp_bad:")
+        st.stop()
+    logger.info(f"MODEL VERIFIED | {os.path.basename(MODEL_PATH)} | SHA256={sha256}")
+    return model
 
 
 @st.cache_resource
 def load_iso_model():
-    """Load the Isolation Forest anomaly detector (optional — won't crash if missing)."""
-    if os.path.exists(ISO_PATH):
-        return joblib.load(ISO_PATH)
-    return None   # Dashboard still works without it
+    """Load the Isolation Forest anomaly detector (optional — won't crash if missing or unverified)."""
+    if not os.path.exists(ISO_PATH):
+        return None   # Dashboard still works without it
+    try:
+        model, sha256 = ei.load_verified_model(ISO_PATH)
+    except ei.ModelIntegrityError as e:
+        logger.error(f"MODEL INTEGRITY FAILURE | {e} | zero-day layer disabled")
+        st.warning(f"Isolation Forest not loaded (integrity check failed): {e}", icon=":material/gpp_maybe:")
+        return None
+    logger.info(f"MODEL VERIFIED | {os.path.basename(ISO_PATH)} | SHA256={sha256}")
+    return model
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def audit_log_status() -> dict:
+    """Re-verify the audit log's HMAC chain (cached briefly; the sidebar renders on every rerun)."""
+    result = audit_log.verify_log(AUDIT_LOG_PATH)
+    if not result["verified"]:
+        logger.error(f"AUDIT LOG VERIFICATION FAILED | {'; '.join(result['problems'][:5])}")
+    return result
 
 
 @st.cache_data
@@ -728,6 +756,19 @@ def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.
         [Paragraph("Source Evidence File", cell_bold), Paragraph(
             f"{xml_esc(result['source_file'])} ({xml_esc(integ.get('evidence_kind', ''))}, "
             f"{ei.format_size(integ.get('evidence_size', 0) or 0)})", cell_style)],
+        [Paragraph("Evidence Origin", cell_bold), Paragraph(xml_esc(
+            (lambda o: f"{o.get('source_device', 'N/A')}"
+                       f"{(' - custodian ' + o['custodian']) if o.get('custodian') else ''}"
+                       f"{(' - ' + o['location']) if o.get('location') else ''}")(
+                (integ.get("provenance") or {}).get("origin") or {})), cell_style)],
+        [Paragraph("Collected By / When / Tool", cell_bold), Paragraph(xml_esc(
+            (lambda o: f"{o.get('collected_by', 'N/A')} - {o.get('collected_at', 'N/A')} - "
+                       f"{o.get('acquisition_tool', 'N/A')}")(
+                (integ.get("provenance") or {}).get("origin") or {})), cell_style)],
+        [Paragraph("Prepared For", cell_bold), Paragraph(xml_esc(
+            (lambda r: f"{recipient_label(r)} - {r.get('purpose', 'N/A')}"
+                       f"{(' - ref ' + r['reference']) if r.get('reference') else ''}")(
+                (integ.get("provenance") or {}).get("prepared_for") or {})), cell_style)],
         [Paragraph("Evidence SHA-256", cell_bold), Paragraph(xml_esc(integ.get("evidence_sha256", "N/A")), hash_style)],
         [Paragraph("Evidence MD5", cell_bold), Paragraph(xml_esc(integ.get("evidence_md5", "N/A")), hash_style)],
     ]
@@ -739,6 +780,9 @@ def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.
         [Paragraph("Analysed Vector SHA-256", cell_bold), Paragraph(xml_esc(integ.get("vector_sha256", "N/A")), hash_style)],
         [Paragraph("Evaluated Record / Row", cell_bold), Paragraph(f"Row {r_idx}", cell_style)],
         [Paragraph("Telemetry Features", cell_bold), Paragraph(f"{n_feat} memory telemetry indicators", cell_style)],
+        [Paragraph("Input Validation", cell_bold), Paragraph(xml_esc(integ.get("input_validation") or "N/A"),
+                                                              cell_style if integ.get("input_validation", "").startswith("PASSED")
+                                                              else cell_warning)],
         [Paragraph("Analysis Engines", cell_bold), Paragraph("Random Forest Classifier (150 trees) + Isolation Forest (Zero-Day Anomaly Detector)", cell_style)],
     ]
     if chain is not None:
@@ -893,7 +937,9 @@ def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.
         story.append(Paragraph(
             "Every artefact handled by the tool was hashed (SHA-256) when first received and re-hashed at each "
             "processing stage. MATCH means the recomputed hash equals the hash recorded at acquisition. Each "
-            "ledger entry is chained to the previous entry's hash, so any alteration of the ledger is detectable.",
+            "ledger entry is chained to the previous entry by an HMAC-SHA256 link keyed with the lab's secret "
+            f"ledger key (key ID {xml_esc(ei.ledger_key_id())}), so the ledger cannot be altered and re-chained "
+            "without that key.",
             cell_style
         ))
         story.append(Spacer(1, 4))
@@ -989,24 +1035,27 @@ def active_case():
     return st.session_state.get("case_session")
 
 
-def open_case_session(case_number: str, analyst: str, organisation: str, notes: str) -> dict:
+def open_case_session(case_number: str, analyst: str, organisation: str, notes: str, recipient: dict) -> dict:
     record = load_case_record(case_number)
     session = {
         "case_number":   case_number,
         "analyst":       analyst,
         "organisation":  organisation,
         "notes":         notes,
+        "recipient":     recipient,
         "session_id":    uuid.uuid4().hex[:8].upper(),
         "opened_local":  ei.local_timestamp(),
         "opened_utc":    ei._utc_now(),
         "prior_sessions": len(record["sessions"]),
     }
     record["sessions"].append({k: session[k] for k in
-                               ("session_id", "analyst", "organisation", "notes", "opened_local", "opened_utc")}
+                               ("session_id", "analyst", "organisation", "notes", "recipient",
+                                "opened_local", "opened_utc")}
                               | {"closed_local": None, "closed_utc": None})
     save_case_record(record)
     logger.info(f"CASE SESSION OPENED | CASE={case_number} | ANALYST={analyst} | ORG={organisation or '-'} | "
-                f"SESSION={session['session_id']} | OPENED={session['opened_local']} ({session['opened_utc']})")
+                f"SESSION={session['session_id']} | PREPARED_FOR={recipient_label(recipient)} | "
+                f"PURPOSE={recipient['purpose']} | OPENED={session['opened_local']} ({session['opened_utc']})")
     # A new session starts with a clean evidence workspace
     for key in ("cases", "evidence", "current_triage", "batch_summary", "last_source_file", "triage_blocked"):
         st.session_state.pop(key, None)
@@ -1039,6 +1088,7 @@ def register_evidence(chain):
         "sha256": ev.get("sha256"), "md5": ev.get("md5"), "size": ev.get("size"),
         "acquired_by": chain.analyst, "acquired_local": ei.local_timestamp(), "acquired_utc": ei._utc_now(),
         "session_id": (active_case() or {}).get("session_id"),
+        "provenance": chain.provenance,
     })
     save_case_record(record)
 
@@ -1050,12 +1100,16 @@ def render_case_session():
         org = f" · {ui.esc(session['organisation'])}" if session["organisation"] else ""
         previous = (f" · continues case ({session['prior_sessions']} earlier session"
                     f"{'s' if session['prior_sessions'] != 1 else ''})" if session["prior_sessions"] else "")
-        col_info, col_close = st.columns([5, 1], vertical_alignment="center")
+        col_info, col_close = st.columns([4.2, 1.2], vertical_alignment="center")
         with col_info:
             ui.render_html(f"""
             <div class="fx-kpis">
               {ui.kpi("Case number", ui.esc(session['case_number']), mono=True, wide=True)}
-              {ui.kpi("Analyst", ui.esc(session['analyst']), session['organisation'] or "", small=True)}
+              {ui.kpi("Analyst", ui.esc(session['analyst']), ui.esc(session['organisation']), small=True)}
+              {ui.kpi("Prepared for", ui.esc((session.get('recipient') or {}).get('name', '—')),
+                      ui.esc(' · '.join(v for v in ((session.get('recipient') or {}).get('organisation'),
+                                                    (session.get('recipient') or {}).get('purpose')) if v)),
+                      small=True)}
               {ui.kpi("Session opened", ui.esc(session['opened_local']), ui.esc(session['opened_utc']), small=True)}
             </div>
             <div style="color: var(--muted); font-size: 0.9rem; margin-top: 0.5rem;">
@@ -1064,9 +1118,7 @@ def render_case_session():
             """)
         with col_close:
             if st.button("Close case", width="stretch", icon=":material/lock:"):
-                close_case_session()
-                st.toast("Case session closed and logged", icon="🔒")
-                st.rerun()
+                confirm_close_case()
         return session
 
     with st.form("open_case_form", border=False):
@@ -1076,27 +1128,52 @@ def render_case_session():
                                         help="Your lab's case reference. Letters, digits, - _ . / (3-40 characters).")
             organisation = st.text_input("Unit / organisation", placeholder="e.g. CSIRT, DFIR Lab")
         with c2:
-            analyst = st.text_input("Analyst name *", placeholder="Full name of the examiner")
+            user = st.session_state["auth_user"]
+            analyst = f"{user['full_name']} ({user['username']})"
+            st.text_input("Analyst (signed-in account)", value=analyst, disabled=True,
+                          help="Case actions are attributed to the authenticated user.")
             notes = st.text_input("Case notes", placeholder="e.g. Suspected ransomware on HR-PC-07")
+        st.markdown("**Prepared for** — who will receive the findings and evidence")
+        r1, r2, r3, r4 = st.columns([1.2, 1.2, 1.1, 0.9])
+        recipient_name = r1.text_input("Recipient *", placeholder="e.g. DCI Sarah Khan")
+        recipient_org  = r2.text_input("Recipient organisation", placeholder="e.g. Metro Police Cyber Unit")
+        purpose        = r3.selectbox("Purpose", PURPOSES)
+        reference      = r4.text_input("Reference no.", placeholder="e.g. REQ-2026-114")
         st.caption(f"The session start time is recorded automatically: **{ei.local_timestamp()}** "
                    f"(every custody event is also stamped in UTC).")
         submitted = st.form_submit_button("Open case session", type="primary", icon=":material/folder_open:")
 
     if submitted:
-        case_number, analyst = case_number.strip(), " ".join(analyst.split())
+        case_number = case_number.strip()
         errors = []
         if not CASE_NUMBER_RE.match(case_number):
             errors.append("Enter a valid **case number** (3-40 characters: letters, digits, - _ . /).")
-        if len(analyst) < 3:
-            errors.append("**Analyst name** is required (at least 3 characters).")
+        if len(recipient_name.strip()) < 3:
+            errors.append("Enter the **recipient** the evidence is prepared for (at least 3 characters).")
         if errors:
             for e in errors:
                 st.error(e, icon=":material/error:")
             return None
-        open_case_session(case_number, analyst, organisation.strip(), notes.strip())
+        open_case_session(case_number, analyst, organisation.strip(), notes.strip(), {
+            "name": " ".join(recipient_name.split()), "organisation": recipient_org.strip(),
+            "purpose": purpose, "reference": reference.strip()})
         st.toast(f"Case {case_number} opened by {analyst}", icon="📂")
         st.rerun()
     return None
+
+
+@st.dialog("Close this case session?")
+def confirm_close_case():
+    session = active_case()
+    st.write(f"Case **{session['case_number']}** will be closed and the closing time recorded. "
+             "You can continue it later from the **Cases** page.")
+    c1, c2 = st.columns(2)
+    if c1.button("Keep working", width="stretch"):
+        st.rerun()
+    if c2.button("Close case", type="primary", width="stretch", icon=":material/lock:"):
+        close_case_session()
+        st.toast("Case session closed and logged", icon=":material/lock:")
+        st.rerun()
 
 
 def open_case(evidence_name: str, kind: str, hashes: dict, action: str, details: str = ""):
@@ -1106,8 +1183,49 @@ def open_case(evidence_name: str, kind: str, hashes: dict, action: str, details:
                             evidence_id=ei.new_evidence_id(hashes["sha256"]), analyst=session["analyst"])
     chain.record("Acquisition", action, evidence_name, hashes, role="evidence",
                  details=f"{details} | Case session {session['session_id']} opened {session['opened_local']}".strip(" |"))
+    record_provenance(chain, st.session_state.get("pending_origin") or {}, session.get("recipient") or {})
     register_evidence(chain)
     return chain
+
+
+def recipient_label(recipient: dict) -> str:
+    name, org = recipient.get("name", ""), recipient.get("organisation", "")
+    return f"{name} ({org})" if name and org else name or org or "-"
+
+
+def origin_label(origin: dict) -> str:
+    who = f" (custodian: {origin['custodian']})" if origin.get("custodian") else ""
+    return f"{origin.get('source_device', '-')}{who}"
+
+
+def record_provenance(chain, origin: dict, recipient: dict):
+    """Lock where the evidence came from and who it is for into the custody ledger (tamper-evident)."""
+    chain.provenance = {"origin": dict(origin), "prepared_for": dict(recipient)}
+    payload = json.dumps(chain.provenance, sort_keys=True).encode("utf-8")
+    chain.record("Provenance", "Evidence origin and intended recipient recorded at acquisition",
+                 chain.evidence_name, {"sha256": hashlib.sha256(payload).hexdigest()}, role="provenance",
+                 details=(f"Origin: {origin_label(origin)} | Collected by {origin.get('collected_by', '-')} "
+                          f"at {origin.get('collected_at', '-')} | Location: {origin.get('location') or '-'} | "
+                          f"Tool: {origin.get('acquisition_tool', '-')} | Prepared for: {recipient_label(recipient)} "
+                          f"| Purpose: {recipient.get('purpose', '-')} | Ref: {recipient.get('reference') or '-'}"))
+    reported = origin.get("reported_hash", "")
+    if reported:
+        ev = chain.baseline("evidence")
+        algo = "SHA-256" if len(reported) == 64 else "MD5"
+        computed = ev.get("sha256" if algo == "SHA-256" else "md5", "")
+        match = hmac.compare_digest(reported, computed)
+        chain.record("Acquisition Verification",
+                     f"{algo} reported by the acquisition tool compared with the hash computed on arrival",
+                     chain.evidence_name, {k: ev.get(k) for k in ("sha256", "md5", "size")},
+                     status=ei.STATUS_MATCH if match else ei.STATUS_MISMATCH,
+                     details=f"Reported {algo}: {reported} | Computed {algo}: {computed}")
+        (logger.info if match else logger.error)(
+            f"ACQUISITION HASH {'MATCH' if match else 'MISMATCH'} | CASE={chain.case_id} | "
+            f"EVIDENCE={chain.evidence_id} | {algo} reported={reported} computed={computed}")
+    logger.info(f"PROVENANCE | CASE={chain.case_id} | EVIDENCE={chain.evidence_id} | "
+                f"SOURCE={origin_label(origin)} | COLLECTED_BY={origin.get('collected_by', '-')} | "
+                f"COLLECTED_AT={origin.get('collected_at', '-')} | TOOL={origin.get('acquisition_tool', '-')} | "
+                f"PREPARED_FOR={recipient_label(recipient)} | PURPOSE={recipient.get('purpose', '-')}")
 
 
 def case_path(chain, *parts) -> str:
@@ -1164,6 +1282,16 @@ def ingest_csv_evidence(key: str, name: str, kind: str, hashes: dict,
                               "csv_role": "evidence"})
 
 
+def reject_intake(key: str, name: str, error: Exception):
+    """Show and audit-log an intake rejection (logged once per file, despite Streamlit reruns)."""
+    logged = st.session_state.setdefault("rejected_intake", set())
+    if key not in logged:
+        logged.add(key)
+        logger.warning(f"INTAKE REJECTED | CASE={(active_case() or {}).get('case_number', '-')} | "
+                       f"FILE={name} | REASON={error}")
+    st.error(f"**{name}** was rejected: {error}", icon=":material/block:")
+
+
 def render_memory_dump_ingestion():
     """
     Memory dump ingestion: accepts an uploaded dump or a local path, hashes it,
@@ -1186,21 +1314,37 @@ def render_memory_dump_ingestion():
     if uploaded_dump is not None:
         dump_key = f"dump-upload:{uploaded_dump.name}:{uploaded_dump.size}"
         dump_name = uploaded_dump.name
+        dump_size = uploaded_dump.size
+        try:
+            dump_format = iv.check_memory_image(uploaded_dump, uploaded_dump.size, dump_name,
+                                                memdump_extractor.DUMP_EXTENSIONS)
+            iv.check_disk_space(CASES_DIR, uploaded_dump.size)
+        except iv.UploadRejected as e:
+            reject_intake(dump_key, dump_name, e)
+            return None
     elif local_path:
         if not os.path.isfile(local_path):
             st.error(f"File not found: `{local_path}`")
             return None
         dump_key = f"dump-path:{os.path.abspath(local_path)}:{os.path.getsize(local_path)}:{os.path.getmtime(local_path)}"
         dump_name = os.path.basename(local_path)
+        dump_size = os.path.getsize(local_path)
+        try:
+            dump_format = iv.check_memory_image(local_path, dump_size, dump_name,
+                                                memdump_extractor.DUMP_EXTENSIONS)
+        except iv.UploadRejected as e:
+            reject_intake(dump_key, dump_name, e)
+            return None
     else:
-        ui.empty_state("🧠", "Add a Windows memory image",
+        ui.empty_state("memory", "Add a Windows memory image",
                        "It is hashed (SHA-256 + MD5), Volatility 3 extracts 55 memory features, "
                        "and every step is re-verified up to the final report.")
         return None
 
     ctx = st.session_state.get("cases", {}).get(dump_key)
     if ctx is None:
-        st.info(f"**{dump_name}** is ready. Extraction runs 9 Volatility plugins and can take a few minutes.",
+        st.info(f"**{dump_name}** passed intake checks ({dump_format}, {ei.format_size(dump_size)}). "
+                f"Extraction runs 9 Volatility plugins and can take a few minutes.",
                 icon=":material/memory:")
         if not st.button("Extract features", type="primary", icon=":material/memory:"):
             return None
@@ -1210,14 +1354,15 @@ def render_memory_dump_ingestion():
             if uploaded_dump is not None:
                 chain = open_case(dump_name, "memory-dump", ei.hash_stream(uploaded_dump),
                                   "Memory image received via dashboard upload",
-                                  details="Hash computed over the exact bytes received from the analyst")
+                                  details=f"Hash computed over the exact bytes received from the analyst | "
+                                          f"Intake check: {dump_format}")
                 progress_bar.progress(0.02, text="Writing write-protected working copy of the memory image...")
                 dump_path = preserve_upload(chain, uploaded_dump)
             else:
                 dump_path = os.path.abspath(local_path)
                 chain = open_case(dump_name, "memory-dump", ei.hash_file(dump_path),
                                   "Memory image referenced in place (read-only, not copied)",
-                                  details=f"Source path: {dump_path}")
+                                  details=f"Source path: {dump_path} | Intake check: {dump_format}")
 
             logger.info(f"Memory dump extraction started: CASE={chain.case_id} | {dump_name}")
             _, csv_path, report = memdump_extractor.extract_features(
@@ -1295,8 +1440,7 @@ def verify_before_analysis(ctx: dict, sample_df: pd.DataFrame, row_index: int, e
     chain = ctx["chain"]
     verify_artifacts(ctx, "Pre-Analysis", "before ML inference")
 
-    file_row = (pd.read_csv(ctx["csv_path"]).select_dtypes(include=[np.number])
-                .iloc[[row_index]].reindex(columns=expected_cols, fill_value=0))
+    file_row = iv.feature_matrix(pd.read_csv(ctx["csv_path"]), expected_cols).iloc[[row_index]]
     role  = f"vector:row{row_index}"
     label = f"Row {row_index} feature vector ({len(expected_cols)} features)"
     chain.record("Analysis Input", "Feature vector read from the hash-verified evidence file", label,
@@ -1311,6 +1455,7 @@ def verify_before_analysis(ctx: dict, sample_df: pd.DataFrame, row_index: int, e
         "evidence_item_id": chain.evidence_id,
         "analyst":         chain.analyst,
         "organisation":    (active_case() or {}).get("organisation", ""),
+        "provenance":      chain.provenance,
         "session_id":      (active_case() or {}).get("session_id", ""),
         "session_opened":  (active_case() or {}).get("opened_local", ""),
         "evidence_name":   ctx["name"],
@@ -1323,6 +1468,7 @@ def verify_before_analysis(ctx: dict, sample_df: pd.DataFrame, row_index: int, e
         "csv_md5":         csv.get("md5", ""),
         "vector_sha256":   vector["sha256"],
         "verified_utc":    vector["timestamp"],
+        "input_validation": iv.summary(ctx["validation"]) if ctx.get("validation") else "",
     }
 
 
@@ -1347,7 +1493,18 @@ STATUS_ICONS = {
 
 RISK_TONES = {"HIGH RISK": "critical", "SUSPICIOUS": "warning", "NORMAL": "good"}
 RISK_ICONS = {"HIGH RISK": "⛔", "SUSPICIOUS": "⚠️", "NORMAL": "✅"}
+RISK_GLYPHS = {"HIGH RISK": "gpp_bad", "SUSPICIOUS": "warning", "NORMAL": "verified_user"}
 KIND_LABELS = {"memory-dump": "Memory dump", "csv-upload": "CSV upload", "csv-sample": "Sample profile"}
+ACQUISITION_TOOLS = ["DumpIt", "WinPmem", "FTK Imager", "Magnet RAM Capture", "Belkasoft RAM Capturer",
+                     "VM snapshot (VMware / VirtualBox / Hyper-V)", "Volatility feature export",
+                     "Research dataset", "Other"]
+PURPOSES = ["Incident response", "Internal investigation", "Law enforcement request", "Court / legal proceedings",
+            "Regulatory / compliance", "Client engagement", "Research / training", "Other"]
+SAMPLE_ORIGIN = {
+    "source_device": "CIC-MalMem2022 reference profile", "custodian": "Canadian Institute for Cybersecurity",
+    "location": "Public research dataset (UNB CIC)", "collected_by": "Dataset authors",
+    "acquisition_tool": "Research dataset",
+}
 
 SAMPLE_PRESETS = {
     "fresh_aggressive_ransomware.csv": "🔴 Active ransomware",
@@ -1439,7 +1596,152 @@ def render_evidence_summary(ctx: dict, df: pd.DataFrame):
               + ui.hash_line("Evidence SHA-256", ev.get("sha256", "")) + ui.hash_line("Evidence MD5", ev.get("md5", "")))
     if csv:
         hashes += ui.hash_line(f"Derived CSV SHA-256 · {csv.get('artifact', '')}", csv.get("sha256", ""))
-    ui.render_html(f'<div class="fx-card" style="margin: 0.8rem 0 0.9rem; padding-top: 0.4rem;">{hashes}</div>')
+    with st.expander("Technical fingerprints — evidence ID and hashes", icon=":material/fingerprint:"):
+        ui.render_html(f'<div style="padding-top: 0.1rem;">{hashes}</div>')
+    prov = chain.provenance or {}
+    if prov:
+        origin, recipient = prov.get("origin") or {}, prov.get("prepared_for") or {}
+        ui.render_html(
+            '<div class="fx-prov-strip">'
+            f'<div>{ui.icon("travel_explore")}<span>From</span><b>{ui.esc(origin_label(origin))}</b>'
+            f'<em>collected by {ui.esc(origin.get("collected_by", "-"))} · {ui.esc(origin.get("collected_at", "-"))}</em></div>'
+            f'<div>{ui.icon("outgoing_mail")}<span>For</span><b>{ui.esc(recipient_label(recipient))}</b>'
+            f'<em>{ui.esc(recipient.get("purpose", "-"))}'
+            f'{(" · ref " + ui.esc(recipient["reference"])) if recipient.get("reference") else ""}</em></div>'
+            '</div>')
+
+
+def render_feature_validation(ctx: dict, df: pd.DataFrame) -> bool:
+    """
+    Feature gate: check the evidence against the model's 55 features. Returns True
+    when analysis may proceed (passed, or warnings acknowledged by the analyst).
+    The check and any acknowledgement are recorded in the custody ledger.
+    """
+    chain  = ctx["chain"]
+    report = iv.check_features(df, load_rf_model().feature_names_in_.tolist())
+    ctx["validation"] = report
+    label  = f"{ctx['name']} feature validation ({report['expected']} model features)"
+    if ctx.get("validation_recorded") != report["sha256"]:
+        ctx["validation_recorded"] = report["sha256"]
+        chain.record("Input Validation", "Feature table checked against the model's expected features",
+                     label, {"sha256": report["sha256"]}, role="validation", details=iv.summary(report))
+        save_manifest(chain)
+        log_fn = logger.info if report["severity"] == iv.SEVERITY_OK else logger.warning
+        log_fn(f"INPUT VALIDATION | CASE={chain.case_id} | EVIDENCE={chain.evidence_id} | {iv.summary(report)}")
+
+    if report["severity"] == iv.SEVERITY_OK:
+        st.success(f"**Input validation passed** — all {report['expected']} model features present, numeric, "
+                   f"finite and non-negative.", icon=":material/fact_check:")
+        return True
+
+    problems = "\n".join(f"- {p}" for p in report["problems"])
+    if report["missing"] or report["no_data"]:
+        with st.expander(f"Unusable features ({len(report['missing']) + len(report['no_data'])})",
+                         icon=":material/list:"):
+            st.code("\n".join(report["missing"] + report["no_data"]), language=None)
+    if report["severity"] == iv.SEVERITY_BLOCK:
+        st.error(f"**Analysis blocked — the evidence failed input validation.**\n\n{problems}",
+                 icon=":material/gpp_bad:")
+        return False
+
+    st.warning(f"**Incomplete evidence** — the verdict may be unreliable:\n\n{problems}",
+               icon=":material/warning:")
+    acknowledged = st.checkbox("I have reviewed these issues and accept that the affected values are treated as 0",
+                               key=f"ack_validation:{ctx['key']}:{report['sha256'][:12]}")
+    if acknowledged and ctx.get("validation_ack") != report["sha256"]:
+        ctx["validation_ack"] = report["sha256"]
+        chain.record("Input Validation", "Analyst acknowledged validation warnings before analysis",
+                     label, {"sha256": report["sha256"]}, role="validation",
+                     details=f"Acknowledged by {chain.analyst}: {'; '.join(report['problems'])}")
+        save_manifest(chain)
+        logger.warning(f"INPUT VALIDATION ACKNOWLEDGED | CASE={chain.case_id} | EVIDENCE={chain.evidence_id} | "
+                       f"ANALYST={chain.analyst}")
+    return acknowledged
+
+
+def render_evidence_origin(source: str):
+    """
+    'Where did this evidence come from?' Returns the origin dict, or None while a
+    required field is missing. Values are locked into the ledger at acquisition.
+    """
+    defaults = SAMPLE_ORIGIN if source == "sample" else {}
+    k = lambda field: f"origin_{source}_{field}"
+    with st.expander("Evidence origin — where did this evidence come from?", icon=":material/travel_explore:",
+                     expanded=source != "sample"):
+        c1, c2, c3 = st.columns(3)
+        device    = c1.text_input("Source device / host *", value=defaults.get("source_device", ""),
+                                  placeholder="e.g. HR-PC-07 (Dell OptiPlex, S/N 4XK2)", key=k("device"))
+        custodian = c2.text_input("Owner / custodian", value=defaults.get("custodian", ""),
+                                  placeholder="e.g. John Smith, HR department", key=k("custodian"))
+        location  = c3.text_input("Collected from (location)", value=defaults.get("location", ""),
+                                  placeholder="e.g. HQ, 3rd floor, desk 14", key=k("location"))
+        c4, c5, c6, c7 = st.columns([1.3, 1, 0.8, 1.3])
+        collector = c4.text_input("Collected by *", value=defaults.get("collected_by", ""),
+                                  placeholder="Name of the person who acquired it", key=k("collector"))
+        day       = c5.date_input("Collection date", key=k("date"))
+        at        = c6.time_input("Time", key=k("time"))
+        tool      = c7.selectbox("Acquisition tool", ACQUISITION_TOOLS, key=k("tool"),
+                                 index=ACQUISITION_TOOLS.index(defaults.get("acquisition_tool", "DumpIt")))
+        n1, n2 = st.columns([1.2, 1])
+        notes     = n1.text_input("Origin notes", placeholder="e.g. Seized under warrant 22/114; machine was running",
+                                  key=k("notes"))
+        reported  = n2.text_input("Hash from the acquisition tool (optional)", key=k("hash"),
+                                  placeholder="SHA-256 or MD5 printed by DumpIt / FTK Imager…",
+                                  help="If given, it is compared with the hash computed when the evidence arrives. "
+                                       "A mismatch blocks analysis.").strip().lower()
+        st.caption("Recorded in the custody ledger when the evidence is acquired. Changes made afterwards apply "
+                   "to the next evidence item only.")
+    if reported and not re.fullmatch(r"[0-9a-f]{32}|[0-9a-f]{64}", reported):
+        st.error("The acquisition-tool hash must be an MD5 (32 hex characters) or SHA-256 (64 hex characters).",
+                 icon=":material/error:")
+        st.session_state.pop("pending_origin", None)
+        return None
+    if len(device.strip()) < 2 or len(collector.strip()) < 2:
+        st.session_state.pop("pending_origin", None)
+        return None
+    collected_at = datetime.combine(day, at).astimezone()
+    origin = {
+        "source_device": device.strip(), "custodian": custodian.strip(), "location": location.strip(),
+        "collected_by": " ".join(collector.split()), "acquisition_tool": tool, "notes": notes.strip(),
+        "reported_hash": reported,
+        "collected_at": ei.local_timestamp(collected_at),
+    }
+    st.session_state["pending_origin"] = origin
+    return origin
+
+
+def render_provenance_tab(evidence: dict):
+    prov = evidence["chain"].provenance or {}
+    origin, recipient = prov.get("origin") or {}, prov.get("prepared_for") or {}
+    if not origin and not recipient:
+        st.info("No provenance was recorded for this evidence item (acquired before provenance tracking).")
+        return
+    st.caption("Recorded at acquisition and sealed in the custody ledger (stage **Provenance**).")
+    c_from, c_to = st.columns(2, gap="large")
+    with c_from:
+        ui.render_html(f'<div class="fx-prov-head">{ui.mac_icon("travel_explore", 34)}'
+                       f'<div><div class="fx-prov-title">Where the evidence came from</div>'
+                       f'<div class="fx-prov-sub">Origin &amp; acquisition</div></div></div>')
+        ui.kpi_row([
+            ui.kpi("Source device / host", ui.esc(origin.get("source_device", "—")), small=True, wide=True),
+            ui.kpi("Owner / custodian", ui.esc(origin.get("custodian") or "—"), small=True),
+            ui.kpi("Location", ui.esc(origin.get("location") or "—"), small=True),
+            ui.kpi("Collected by", ui.esc(origin.get("collected_by", "—")), small=True),
+            ui.kpi("Collected at", ui.esc(origin.get("collected_at", "—")), small=True),
+            ui.kpi("Acquisition tool", ui.esc(origin.get("acquisition_tool", "—")), small=True, wide=True),
+        ])
+        if origin.get("notes"):
+            st.caption(f"Notes: {origin['notes']}")
+    with c_to:
+        ui.render_html(f'<div class="fx-prov-head">{ui.mac_icon("outgoing_mail", 34)}'
+                       f'<div><div class="fx-prov-title">Who it is prepared for</div>'
+                       f'<div class="fx-prov-sub">Recipient &amp; purpose</div></div></div>')
+        ui.kpi_row([
+            ui.kpi("Recipient", ui.esc(recipient.get("name") or "—"), small=True, wide=True),
+            ui.kpi("Organisation", ui.esc(recipient.get("organisation") or "—"), small=True),
+            ui.kpi("Purpose", ui.esc(recipient.get("purpose") or "—"), small=True),
+            ui.kpi("Reference", ui.esc(recipient.get("reference") or "—"), small=True, wide=True),
+        ])
 
 
 def render_ingestion():
@@ -1447,10 +1749,15 @@ def render_ingestion():
     source = st.segmented_control(
         "Evidence source",
         options=["sample", "csv", "dump"],
-        format_func={"sample": "🧪  Sample profile", "csv": "📄  Volatility CSV", "dump": "🧠  Memory dump"}.get,
+        format_func={"sample": ":material/science: Sample profile", "csv": ":material/table_view: Volatility CSV",
+                     "dump": ":material/memory: Memory dump"}.get,
         default="sample",
         key="ingest_source",
     ) or "sample"
+
+    if render_evidence_origin(source) is None:
+        st.info("Complete the required **evidence origin** fields (*) to enable intake.", icon=":material/info:")
+        return None
 
     if source == "sample":
         available = [s for s in SAMPLE_PRESETS if os.path.exists(os.path.join(SAMPLES_DIR, s))]
@@ -1471,8 +1778,13 @@ def render_ingestion():
     uploaded = st.file_uploader("Volatility feature CSV", type=["csv"],
                                 help="A CSV with the 55 Volatility memory features (one row per memory snapshot).")
     if uploaded is None:
-        ui.empty_state("📄", "Drop a Volatility CSV to begin",
+        ui.empty_state("upload_file", "Drop a Volatility CSV to begin",
                        "It is fingerprinted on arrival and re-verified at every step.")
+        return None
+    try:
+        iv.check_csv_upload(uploaded, uploaded.size, load_rf_model().feature_names_in_.tolist())
+    except iv.UploadRejected as e:
+        reject_intake(f"csv-upload:{uploaded.name}:{uploaded.size}", uploaded.name, e)
         return None
     hashes = ei.hash_stream(uploaded)
     return ingest_csv_evidence(key=f"csv-upload:{uploaded.name}:{hashes['sha256']}", name=uploaded.name,
@@ -1483,7 +1795,7 @@ def run_selected_triage(evidence: dict, df: pd.DataFrame, row_index: int):
     """Integrity checkpoint + model inference for the selected row."""
     rf_model      = load_rf_model()
     expected_cols = rf_model.feature_names_in_.tolist()
-    sample_df = df.select_dtypes(include=[np.number]).iloc[[row_index]].reindex(columns=expected_cols, fill_value=0)
+    sample_df = iv.feature_matrix(df, expected_cols).iloc[[row_index]]
 
     with st.spinner("Re-verifying evidence hashes..."):
         integrity = verify_before_analysis(evidence, sample_df, row_index, expected_cols)
@@ -1525,14 +1837,14 @@ def render_verdict(result: dict, chain):
     }[risk]
     anomaly_html = ""
     if result["is_anomaly"]:
-        anomaly_html = ui.banner("🛰️", "Zero-day anomaly", "Isolation Forest flagged this profile as an outlier versus known baselines.", "accent")
+        anomaly_html = ui.banner("radar", "Zero-day anomaly", "Isolation Forest flagged this profile as an outlier versus known baselines.", "accent")
     tiles = "".join([
-        ui.kpi("Risk level", f"{RISK_ICONS[risk]} {risk}", color=ui.TONES[tone][0]),
-        ui.kpi("Classification", "🦠 MALWARE" if is_malware else "🛡️ BENIGN",
+        ui.kpi("Risk level", f"{ui.icon(RISK_GLYPHS[risk])} {risk}", color=ui.TONES[tone][0]),
+        ui.kpi("Classification", f"{ui.icon('coronavirus')} MALWARE" if is_malware else f"{ui.icon('shield')} BENIGN",
                color=ui.CRITICAL if is_malware else ui.GOOD),
-        ui.kpi("Zero-day check", "⚠️ Anomaly" if result["is_anomaly"] else "✅ Normal",
+        ui.kpi("Zero-day check", f"{ui.icon('radar')} Anomaly" if result["is_anomaly"] else f"{ui.icon('check_circle')} Normal",
                color=ui.WARNING if result["is_anomaly"] else ui.GOOD),
-        ui.kpi("Evidence integrity", "🔒 Verified" if chain.is_intact else "⛔ Compromised",
+        ui.kpi("Evidence integrity", f"{ui.icon('lock')} Verified" if chain.is_intact else f"{ui.icon('lock_open')} Compromised",
                color=ui.GOOD if chain.is_intact else ui.CRITICAL),
     ])
     ui.render_html(f"""
@@ -1541,7 +1853,7 @@ def render_verdict(result: dict, chain):
         <div>{ui.gauge(pct, tone, "Malware score")}</div>
         <div>
           <div class="fx-kpis">{tiles}</div>
-          {ui.banner(RISK_ICONS[risk], banner[0], banner[1], tone)}
+          {ui.banner(RISK_GLYPHS[risk], banner[0], banner[1], tone)}
           {anomaly_html}
         </div>
       </div>
@@ -1663,7 +1975,7 @@ def render_custody_tab(result: dict, evidence: dict):
 
 
 def render_audit_tab():
-    log_path = os.path.join(LOG_DIR, "triage_audit.log")
+    log_path = AUDIT_LOG_PATH
     if not os.path.exists(log_path):
         st.info("No audit records yet.")
         return
@@ -1676,14 +1988,6 @@ def render_audit_tab():
 def render_sidebar(case, evidence, result, pdf_ready: bool):
     rf_found, iso_found = os.path.exists(MODEL_PATH), os.path.exists(ISO_PATH)
     with st.sidebar:
-        ui.render_html("""
-        <div style="display:flex; align-items:center; gap:0.7rem;">
-          <div class="fx-logo" style="width:42px;height:42px;font-size:1.3rem;">🧬</div>
-          <div><div style="font-weight:800;font-size:1.2rem;">MemTriage <span style="color:var(--accent);">XAI</span></div>
-          <div style="color:var(--muted);font-size:0.85rem;">Memory forensics lab</div></div>
-        </div>
-        """)
-
         ui.render_html('<div class="fx-side-label">Active case</div>')
         if case:
             ellipsis = "max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);"
@@ -1700,40 +2004,41 @@ def render_sidebar(case, evidence, result, pdf_ready: bool):
         else:
             st.caption("No case open.")
 
-        ui.render_html('<div class="fx-side-label">Workflow</div>')
-        checks = [
-            ("Case opened by analyst", bool(case)),
-            ("Evidence acquired & hashed", bool(evidence)),
-            ("Integrity verified", bool(evidence) and evidence["chain"].is_intact),
-            ("Triage completed", result is not None),
-            ("Report sealed", pdf_ready),
-        ]
-        ui.render_html("".join(
-            f'<div class="fx-check"><span style="color:{ui.GOOD if ok else ui.MUTED};font-size:1.05rem;">'
-            f'{"●" if ok else "○"}</span>{ui.esc(label)}</div>' for label, ok in checks))
-
         ui.render_html('<div class="fx-side-label">Engines</div>')
         ui.render_html(
             f'<div class="fx-side-row"><span>Random Forest</span>{ui.pill("Online" if rf_found else "Offline", "good" if rf_found else "critical")}</div>'
             f'<div class="fx-side-row"><span>Isolation Forest</span>{ui.pill("Online" if iso_found else "Disabled", "good" if iso_found else "warning")}</div>'
             f'<div class="fx-side-row"><span>Volatility 3</span>{ui.pill("Ready", "good")}</div>'
         )
+        log_check = audit_log_status()
+        ui.render_html(
+            f'<div class="fx-side-row"><span>Audit log chain</span>'
+            f'{ui.pill("Intact", "good") if log_check["verified"] else ui.pill("Broken", "critical")}</div>')
+        if not log_check["verified"]:
+            st.error("Audit log verification failed: " + "; ".join(log_check["problems"][:3]), icon=":material/gpp_bad:")
         st.caption("Audit log: `logs/triage_audit.log`  \nCases: `outputs/cases/`")
 
 
 def render_dashboard(state: dict):
     # ── 0. Case session (mandatory) ───────────────────────────
-    ui.section("Case session", "Every analysis is recorded under a case number and a named analyst.", "🗃️")
+    ui.section("Case session", "Every analysis is recorded under a case number and a named analyst.", "folder_open")
     with st.container(border=True):
         session = render_case_session()
     if session is None:
-        ui.empty_state("🔐", "Open a case to start",
-                       "Enter the case number and analyst name. Evidence intake unlocks once the session is open.")
+        st.markdown("##### New here? This is how it works")
+        ui.guide_steps([
+            ("folder_open", "Open a case", "Fill in the case number and who the findings are for, above."),
+            ("travel_explore", "Record the origin", "Where the evidence came from, who collected it and when."),
+            ("upload_file", "Load evidence", "A sample profile, a Volatility CSV or a raw Windows memory dump."),
+            ("troubleshoot", "Analyse", "Get a plain-English verdict with the reasons behind it."),
+            ("picture_as_pdf", "Share the report", "Download the sealed PDF — every step is hash-verified."),
+        ])
+        st.caption("Need more detail? Open **Help** in the top menu for a glossary and FAQ.")
         return
     state["case"] = session
 
     # ── 1. Evidence intake ────────────────────────────────────
-    ui.section("Evidence intake", "Load a sample, a Volatility CSV or a raw Windows memory dump.", "🗂️")
+    ui.section("Evidence intake", "Load a sample, a Volatility CSV or a raw Windows memory dump.", "inventory_2")
     with st.container(border=True):
         evidence = render_ingestion()
     if evidence is None:
@@ -1758,27 +2063,33 @@ def render_dashboard(state: dict):
     render_evidence_summary(evidence, df)
     with st.expander("Preview evidence data", icon=":material/table_view:"):
         st.dataframe(df.head(10), width="stretch")
+    if not render_feature_validation(evidence, df):
+        return
 
     # ── 2. Triage controls ────────────────────────────────────
-    ui.section("Run triage", "Pick a memory snapshot (row) and analyse it.", "🎯")
+    ui.section("Run triage", "Pick a memory snapshot (row) and analyse it.", "troubleshoot")
     with st.container(border=True):
-        c_row, c_run, c_scan, c_reset = st.columns([2.2, 1.6, 1.2, 0.9], vertical_alignment="bottom")
+        c_row, c_run, c_scan, c_reset = st.columns([2, 1.6, 1.45, 1], vertical_alignment="bottom")
         with c_row:
             row_index = st.selectbox("Memory snapshot", options=list(range(len(df))),
                                      format_func=lambda i: f"Row {i}" + (f" of {len(df)}" if len(df) > 1 else ""))
         with c_run:
-            run_clicked = st.button("Analyse snapshot", type="primary", width="stretch", icon=":material/play_arrow:")
+            run_clicked = st.button("Analyse snapshot", type="primary", width="stretch", icon=":material/play_arrow:",
+                                    help="Re-checks the evidence hashes, then runs both models on this snapshot "
+                                         "and explains the verdict.")
         with c_scan:
-            scan_clicked = st.button("Scan all rows", width="stretch", icon=":material/radar:")
+            scan_clicked = st.button("Scan all rows", width="stretch", icon=":material/radar:",
+                                     help="Quickly scores every snapshot in the file so you can pick the riskiest.")
         with c_reset:
-            if st.button("Reset", width="stretch", icon=":material/restart_alt:"):
+            if st.button("Reset", width="stretch", icon=":material/restart_alt:",
+                         help="Clears the results on screen. Nothing is deleted from the case."):
                 st.session_state["current_triage"] = None
                 st.session_state["batch_summary"] = None
                 st.rerun()
 
         if scan_clicked:
             rf_model = load_rf_model()
-            batch_df = df.select_dtypes(include=[np.number]).reindex(columns=rf_model.feature_names_in_, fill_value=0)
+            batch_df = iv.feature_matrix(df, rf_model.feature_names_in_.tolist())
             probs = rf_model.predict_proba(batch_df)[:, 1]
             st.session_state["batch_summary"] = pd.DataFrame({
                 "Row": range(len(df)),
@@ -1802,7 +2113,7 @@ def render_dashboard(state: dict):
 
     result = st.session_state.get("current_triage")
     if result is None or result.get("evidence_key") != evidence["key"]:
-        ui.empty_state("🔬", "Ready to analyse",
+        ui.empty_state("biotech", "Ready to analyse",
                        "Choose a snapshot above and press <b>Analyse snapshot</b> to get the verdict, explanation and report.")
         return
     state["result"] = result
@@ -1812,16 +2123,17 @@ def render_dashboard(state: dict):
                 icon=":material/info:")
 
     # ── 3. Results ────────────────────────────────────────────
-    ui.section("Verdict", f"{result['source_file']} · row {result['row_index']} · {result['timestamp']}", "🧾")
+    ui.section("Verdict", f"{result['source_file']} · row {result['row_index']} · {result['timestamp']}", "gavel")
     render_verdict(result, evidence["chain"])
 
     pdf_state = ensure_report(evidence, result)       # before the ledger so it includes the report seal
     state["pdf_ready"] = "sha256" in pdf_state
 
     st.write("")
-    t_over, t_xai, t_custody, t_report, t_log = st.tabs([
+    t_over, t_xai, t_prov, t_custody, t_report, t_log = st.tabs([
         ":material/space_dashboard: Overview",
         ":material/psychology: Explainability",
+        ":material/travel_explore: Provenance",
         ":material/verified_user: Chain of custody",
         ":material/picture_as_pdf: Report",
         ":material/receipt_long: Audit log",
@@ -1834,6 +2146,8 @@ def render_dashboard(state: dict):
             render_shap_explanation(result)
         with s_lime:
             render_lime_explanation(result)
+    with t_prov:
+        render_provenance_tab(evidence)
     with t_custody:
         render_custody_tab(result, evidence)
     with t_report:
@@ -1842,10 +2156,7 @@ def render_dashboard(state: dict):
         render_audit_tab()
 
 
-def main():
-    st.set_page_config(page_title="MemTriage XAI · Memory Forensics", page_icon="🧬", layout="wide")
-    ui.inject_theme()
-
+def triage_page():
     rf_found = os.path.exists(MODEL_PATH)
     ui.page_header(
         "MemTriage", "XAI",
@@ -1872,6 +2183,307 @@ def main():
         with stepper_slot.container():
             ui.stepper(steps)
         render_sidebar(state["case"], evidence, result, state["pdf_ready"])
+
+
+# ── Cases page ────────────────────────────────────────────────────────────────
+PAGES = {}   # navigation pages, filled in main() (used to jump back to Triage)
+
+
+def list_case_records() -> list:
+    records = []
+    if os.path.isdir(CASES_DIR):
+        for name in os.listdir(CASES_DIR):
+            path = os.path.join(CASES_DIR, name, "case.json")
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    rec = json.load(f)
+            except (OSError, ValueError):
+                continue
+            rec["_dir"] = os.path.join(CASES_DIR, name)
+            records.append(rec)
+    return sorted(records, key=lambda r: r.get("created_utc", ""), reverse=True)
+
+
+def latest_recipient(rec: dict) -> dict:
+    return next((s["recipient"] for s in reversed(rec.get("sessions", [])) if s.get("recipient")), {}) or {}
+
+
+def manifest_status(case_dir: str, evidence_id: str):
+    path = os.path.join(case_dir, evidence_id, "custody_manifest.json")
+    if not os.path.isfile(path):
+        return "Ledger missing", "warning", None
+    check = ei.verify_manifest(path)
+    with open(path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+    if check["verified"]:
+        return "Verified", "good", manifest
+    if any("legacy" in p for p in check["problems"]):
+        return "Legacy ledger", "neutral", manifest
+    return "Compromised", "critical", manifest
+
+
+def case_reports(manifest: dict) -> list:
+    reports = []
+    for e in (manifest or {}).get("events", []):
+        if e["stage"] == "Report":
+            path = os.path.join(OUTPUT_DIR, os.path.basename(e["artifact"]))
+            exists = os.path.isfile(path)
+            reports.append({"name": e["artifact"], "path": path, "time": e["timestamp"], "exists": exists,
+                            "intact": exists and ei.hash_file(path)["sha256"] == e["sha256"]})
+    return reports
+
+
+def continue_case(rec: dict):
+    user = st.session_state["auth_user"]
+    if active_case():
+        close_case_session()
+    last = (rec.get("sessions") or [{}])[-1]
+    open_case_session(rec["case_number"], f"{user['full_name']} ({user['username']})",
+                      last.get("organisation", ""), "Continued from the Cases page",
+                      latest_recipient(rec) or {"name": "-", "organisation": "", "purpose": "Other", "reference": ""})
+    st.switch_page(PAGES["triage"])
+
+
+def cases_page():
+    ui.section("Cases", "Every case in this lab — evidence, integrity, reports and who it was prepared for.",
+               "folder_shared")
+    records = list_case_records()
+    if not records:
+        ui.empty_state("folder_open", "No cases yet", "Open a case on the <b>Triage</b> page — it will appear here.")
+        return
+
+    rows = []
+    for r in records:
+        sessions, evidence = r.get("sessions", []), r.get("evidence", [])
+        times = [t for s in sessions for t in (s.get("opened_utc"), s.get("closed_utc")) if t]
+        times += [e.get("acquired_utc") for e in evidence if e.get("acquired_utc")]
+        rows.append({
+            "Case": r["case_number"],
+            "Prepared for": admin_recipient(latest_recipient(r)),
+            "Analysts": ", ".join(sorted({s.get("analyst", "") for s in sessions if s.get("analyst")})),
+            "Evidence": len(evidence),
+            "Sessions": len(sessions),
+            "Created": r.get("created_local", "")[:16],
+            "Last activity": max(times)[:16] if times else "",
+        })
+    table = pd.DataFrame(rows)
+    query = st.text_input("Search cases", placeholder="Case number, analyst, recipient…", key="case_search",
+                          icon=":material/search:")
+    if query:
+        mask = table.apply(lambda r: query.lower() in " ".join(map(str, r.values)).lower(), axis=1)
+        table = table[mask]
+    ui.kpi_row([
+        ui.kpi("Cases", f"{len(records)}"),
+        ui.kpi("Evidence items", f"{sum(len(r.get('evidence', [])) for r in records)}"),
+        ui.kpi("Analysts", f"{len({s.get('analyst') for r in records for s in r.get('sessions', [])})}"),
+    ])
+    st.write("")
+    st.dataframe(table, hide_index=True, width="stretch",
+                 column_config={"Evidence": st.column_config.NumberColumn(width=90),
+                                "Sessions": st.column_config.NumberColumn(width=90)})
+    if table.empty:
+        st.caption("No case matches your search.")
+        return
+
+    choice = st.selectbox("Case details", table["Case"].tolist(), key="case_pick")
+    rec = next(r for r in records if r["case_number"] == choice)
+    recipient = latest_recipient(rec)
+    with st.container(border=True):
+        top_l, top_r = st.columns([4, 1.3], vertical_alignment="center")
+        with top_l:
+            ui.kpi_row([
+                ui.kpi("Case", ui.esc(rec["case_number"]), mono=True),
+                ui.kpi("Prepared for", ui.esc(recipient.get("name") or "—"),
+                       ui.esc(" · ".join(v for v in (recipient.get("organisation"), recipient.get("purpose")) if v)),
+                       small=True),
+                ui.kpi("Created", ui.esc(rec.get("created_local", "—")[:16]), small=True),
+            ])
+        with top_r:
+            current = (active_case() or {}).get("case_number") == rec["case_number"]
+            if st.button("Open in Triage" if current else "Continue this case", type="primary", width="stretch",
+                         icon=":material/play_arrow:", help="Starts a new recorded session for this case."):
+                if current:
+                    st.switch_page(PAGES["triage"])
+                continue_case(rec)
+
+        st.markdown("**Evidence items**")
+        if not rec.get("evidence"):
+            st.caption("No evidence was acquired in this case yet.")
+        for ev in rec.get("evidence", []):
+            label, tone, manifest = manifest_status(rec["_dir"], ev["evidence_id"])
+            origin = ((ev.get("provenance") or {}).get("origin")) or {}
+            with st.expander(f"{ev['name']}  ·  {KIND_LABELS.get(ev.get('kind'), ev.get('kind', ''))}  ·  {label}",
+                             icon=":material/description:"):
+                ui.render_html(
+                    f'<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem;">{ui.pill(label, tone)}'
+                    f'{ui.pill(ev["evidence_id"], "neutral", dot=False)}</div>')
+                ui.kpi_row([
+                    ui.kpi("Acquired by", ui.esc(ev.get("acquired_by", "—")), ui.esc(ev.get("acquired_local", "")),
+                           small=True),
+                    ui.kpi("Source", ui.esc(origin.get("source_device") or "—"),
+                           ui.esc(f"collected by {origin['collected_by']}" if origin.get("collected_by") else ""),
+                           small=True),
+                    ui.kpi("Size", ei.format_size(ev.get("size") or 0)),
+                ])
+                ui.render_html(ui.hash_line("SHA-256 at acquisition", ev.get("sha256", "")))
+                reports = case_reports(manifest)
+                if reports:
+                    st.markdown("**Sealed reports**")
+                for i, rep in enumerate(reports):
+                    c1, c2 = st.columns([4, 1.2], vertical_alignment="center")
+                    seal = ("🟢 seal intact" if rep["intact"] else "🔴 modified since sealing" if rep["exists"]
+                            else "⚪ file not found")
+                    c1.markdown(f"`{rep['name']}` · {rep['time']} · {seal}")
+                    if rep["exists"]:
+                        with open(rep["path"], "rb") as f:
+                            c2.download_button("Download", f.read(), file_name=rep["name"], mime="application/pdf",
+                                               icon=":material/download:", width="stretch",
+                                               key=f"dl_{ev['evidence_id']}_{i}")
+
+        with st.expander(f"Sessions ({len(rec.get('sessions', []))})", icon=":material/history:"):
+            st.dataframe(pd.DataFrame([{
+                "Session": s.get("session_id"), "Analyst": s.get("analyst"),
+                "Opened": s.get("opened_local", ""), "Closed": s.get("closed_local") or "—",
+                "Notes": s.get("notes", ""),
+            } for s in rec.get("sessions", [])]), hide_index=True, width="stretch")
+
+
+def admin_recipient(recipient: dict) -> str:
+    return recipient_label(recipient) if recipient else "—"
+
+
+# ── Authentication & sessions ─────────────────────────────────────────────────
+def start_session(user: dict):
+    """A successful sign-in starts a fresh, empty workspace."""
+    st.session_state.clear()
+    st.session_state["auth"] = {
+        "username": user["username"], "session_id": uuid.uuid4().hex[:8].upper(),
+        "login_ts": time.time(), "last_seen": time.time(), "login_local": ei.local_timestamp(),
+    }
+    auth.audit("LOGIN_SUCCESS", user["username"], role=user["role"],
+               session=st.session_state["auth"]["session_id"], client=admin_pages.client_ip())
+
+
+def end_session(event: str, notice: str = None, level: int = logging.INFO, **fields):
+    """Close any open case, record the sign-out and wipe the session state."""
+    sess = st.session_state.get("auth")
+    if sess:
+        close_case_session()
+        minutes = (time.time() - sess["login_ts"]) / 60
+        auth.audit(event, sess["username"], level, session=sess["session_id"],
+                   duration=f"{minutes:.0f} min", client=admin_pages.client_ip(), **fields)
+    st.session_state.clear()
+    if notice:
+        st.session_state["login_notice"] = notice
+
+
+def current_user():
+    """Re-validate the signed-in user on every run (idle timeout, disabled account, role changes)."""
+    sess = st.session_state.get("auth")
+    if not sess:
+        return None
+    user = auth.get_user(sess["username"])
+    if user is None or not user["active"]:
+        end_session("SESSION_REVOKED", "Your account was disabled — contact an administrator.",
+                    logging.WARNING, reason="account disabled or removed")
+        return None
+    if auth.session_expired(sess["last_seen"]):
+        idle = datetime.fromtimestamp(sess["last_seen"]).strftime("%H:%M:%S")
+        end_session("SESSION_TIMEOUT", f"You were signed out after {auth.IDLE_TIMEOUT_MIN} minutes of inactivity.",
+                    idle_since=idle)
+        return None
+    sess["last_seen"] = time.time()
+    st.session_state["auth_user"] = user
+    return user
+
+
+def assistant_context(user: dict) -> dict:
+    """
+    What the offline assistant may know: progress and a summary of the current
+    result (risk, score, top reasons, integrity). Deliberately no hashes, file
+    names, provenance or raw evidence.
+    """
+    evidence, result = st.session_state.get("evidence"), st.session_state.get("current_triage")
+    if result and (not evidence or result.get("evidence_key") != evidence.get("key")):
+        result = None
+    ctx = {
+        "role": user["role"], "name": user["full_name"], "username": user["username"],
+        "case_open": bool(active_case()), "evidence_loaded": bool(evidence),
+        "integrity_ok": evidence["chain"].is_intact if evidence else None,
+        "checkpoints": len(evidence["chain"].events) if evidence else 0,
+        "validation": (evidence.get("validation") or {}).get("severity") if evidence else None,
+        "report_ready": bool(result) and "sha256" in st.session_state.get(f"pdf_ready_{result['evidence_id']}", {}),
+        "result": None,
+    }
+    if result:
+        shap_df = result.get("_shap_df")
+        drivers = [] if shap_df is None else [
+            (r["Plain English Indicator"], r["SHAP Value"] > 0, r["SHAP Value"] * 100)
+            for _, r in shap_df.head(3).iterrows()]
+        ctx["result"] = {"risk": result["risk"], "score": result["probability"] * 100,
+                         "malware": bool(result["prediction"]), "anomaly": bool(result["is_anomaly"]),
+                         "drivers": drivers, "actions": RESPONSE_ACTIONS[result["risk"]]}
+    return ctx
+
+
+def render_user_panel(user: dict):
+    with st.sidebar:
+        ui.sidebar_brand()
+        sess = st.session_state["auth"]
+        ui.render_html('<div class="fx-side-label">Signed in</div>'
+                       f'<div class="fx-side-row"><span>User</span><span>{ui.esc(user["full_name"])}</span></div>'
+                       f'<div class="fx-side-row"><span>Account</span><code>{ui.esc(user["username"])}</code></div>'
+                       f'<div class="fx-side-row"><span>Role</span>'
+                       f'{ui.pill(admin_pages.ROLE_LABELS[user["role"]], "accent" if user["role"] == "admin" else "neutral")}</div>'
+                       f'<div class="fx-side-row"><span>Since</span><span style="font-size:0.85rem;">'
+                       f'{ui.esc(sess["login_local"][11:16])}</span></div>')
+        if st.button("Sign out", icon=":material/logout:", width="stretch", key="sign_out"):
+            end_session("LOGOUT", "You have been signed out.")
+            st.rerun()
+
+
+def main():
+    st.set_page_config(page_title="MemTriage XAI · Memory Forensics", page_icon=":material/memory:", layout="wide")
+    ui.inject_theme()
+    ui.inject_background()
+
+    try:
+        if not auth.has_users():
+            admin_pages.render_first_run_setup()
+            return
+        user = current_user()
+        if user is None:
+            user = admin_pages.render_login()
+            if user is None:
+                return
+            start_session(user)
+            st.rerun()
+    except auth.UserStoreTampered as e:
+        logger.error(f"AUTH | EVENT=USER_STORE_TAMPERED | USER=- | DETAIL={e}")
+        st.error(f"**Account store integrity failure.** {e}", icon=":material/gpp_bad:")
+        return
+
+    if user.get("must_change_password"):
+        render_user_panel(user)
+        ui.section("Set a new password", "Required before first use of this account.", "key")
+        admin_pages.render_password_change(user, forced=True)
+        return
+
+    PAGES["triage"] = st.Page(triage_page, title="Triage", icon=":material/biotech:", url_path="triage", default=True)
+    pages = [PAGES["triage"],
+             st.Page(cases_page, title="Cases", icon=":material/folder_shared:", url_path="cases")]
+    if user["role"] == "admin":
+        pages += [st.Page(admin_pages.render_audit_page, title="Audit log", icon=":material/policy:", url_path="audit"),
+                  st.Page(admin_pages.render_users_page, title="Users", icon=":material/group:", url_path="users")]
+    pages += [st.Page(admin_pages.render_account_page, title="My account", icon=":material/person:",
+                      url_path="account"),
+              st.Page(help_page.render_help_page, title="Help", icon=":material/help:", url_path="help")]
+    page = st.navigation(pages, position="top")
+    render_user_panel(user)
+    page.run()
+    assistant.render(assistant_context(user))   # after the page, so it sees this run's result
 
 
 # ── ENTRY POINT ───────────────────────────────────────────────────────────────
