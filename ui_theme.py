@@ -449,6 +449,36 @@ footer {{ visibility: hidden !important; }}
 .fx-guide-num {{ position: absolute; top: 1rem; right: 1.1rem; font-weight: 800; font-size: 0.78rem; color: var(--muted); letter-spacing: 0.12em; }}
 .fx-guide-title {{ font-weight: 800; font-size: 1.05rem; margin-top: 0.85rem; letter-spacing: -0.02em; color: var(--text); }}
 .fx-guide-text {{ color: var(--text-2); font-size: 0.93rem; margin-top: 0.25rem; line-height: 1.5; }}
+/* ── Floating assistant ── */
+.st-key-assistant_fab {{ position: fixed !important; right: 26px; bottom: 24px; z-index: 999990; width: auto !important; }}
+.st-key-assistant_fab [data-testid="stPopover"] > div > button, .st-key-assistant_fab button {{
+  min-height: 3.2rem !important; padding: 0 1.3rem !important; border-radius: 999px !important;
+  background: var(--gradient) !important; color: var(--ink) !important; border: 1px solid rgba(167, 243, 208, 0.6) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 34px -10px rgba(16, 185, 129, 0.85) !important;
+  animation: fx-asst-pulse 3.2s ease-in-out infinite;
+}}
+.st-key-assistant_fab button * {{ color: var(--ink) !important; font-weight: 800 !important; }}
+@keyframes fx-asst-pulse {{
+  0%, 100% {{ box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 14px 34px -10px rgba(16,185,129,.85), 0 0 0 0 rgba(16,185,129,.45); }}
+  50%      {{ box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 14px 34px -10px rgba(16,185,129,.85), 0 0 0 10px rgba(16,185,129,0); }}
+}}
+[data-testid="stPopoverBody"]:has(.fx-asst-head) {{
+  width: min(440px, calc(100vw - 32px)) !important; max-width: none !important;
+  background: rgba(11, 21, 18, 0.96) !important; backdrop-filter: blur(16px);
+  border: 1px solid rgba(16, 185, 129, 0.35) !important; border-radius: 20px !important;
+}}
+[data-testid="stPopoverBody"]:has(.fx-asst-head) button {{ animation: none; }}
+[data-testid="stPopoverBody"]:has(.fx-asst-head) [data-testid="stButtonGroup"] button {{
+  min-height: 1.9rem !important; padding: 0 0.75rem !important;
+}}
+[data-testid="stPopoverBody"]:has(.fx-asst-head) [data-testid="stButtonGroup"] button p {{ font-size: 0.82rem !important; }}
+[data-testid="stPopoverBody"]:has(.fx-asst-head) [data-testid="stButtonGroup"] {{ gap: 0.35rem !important; }}
+.fx-asst-head {{ display: flex; align-items: center; gap: 0.7rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--glass-border); }}
+.fx-asst-title {{ font-weight: 800; font-size: 1.05rem; letter-spacing: -0.02em; color: var(--text); }}
+.fx-asst-sub {{ color: var(--muted); font-size: 0.8rem; }}
+[data-testid="stPopoverBody"] [data-testid="stChatMessage"] {{ background: var(--glass); border-radius: 14px; padding: 0.6rem 0.8rem; }}
+[data-testid="stPopoverBody"] [data-testid="stChatMessage"] p, [data-testid="stPopoverBody"] [data-testid="stChatMessage"] li {{ font-size: 0.93rem; }}
+@media (prefers-reduced-motion: reduce) {{ .st-key-assistant_fab button {{ animation: none !important; }} }}
 .fx-check {{ display: flex; align-items: center; gap: 0.6rem; font-size: 0.94rem; color: var(--text-2); padding: 0.3rem 0; }}
 
 @media (max-width: 760px) {{

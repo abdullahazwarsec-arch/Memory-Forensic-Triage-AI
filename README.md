@@ -190,6 +190,9 @@ python scripts/manage_users.py unlock <username>
 python scripts/manage_users.py create <username> "<Full Name>" --role admin
 ```
 
+## Help Assistant
+A floating **Assistant** button (bottom-right, every page after sign-in) answers questions in plain English: how to use each feature, forensic terms (hash, chain of custody, SHAP, LIME, Isolation Forest…), the FAQ, and the **current analysis** — *“explain my result”*, *“what should I do next?”*, *“is the evidence intact?”*. It runs **fully offline** (`assistant.py`): questions are matched to topics with blended character- and word-level TF-IDF (tolerant of typos, and it says so when it is unsure); no AI service, network or API key is used. It only sees a summary of the result (risk, score, top reasons, integrity, progress) — never hashes, file names, provenance or raw evidence. Each question is recorded in the audit log (topic, match score, first 120 characters).
+
 ## Chain of Custody & Evidence Integrity
 Every artefact is fingerprinted with SHA-256 and MD5 and re-verified at each stage:
 

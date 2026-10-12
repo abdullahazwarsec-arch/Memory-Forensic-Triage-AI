@@ -38,6 +38,7 @@ import audit_log
 import auth
 import admin_pages
 import help_page
+import assistant
 
 
 # ── SECTION 2: PATHS & FOLDER SETUP ──────────────────────────────────────────
@@ -2398,6 +2399,35 @@ def current_user():
     return user
 
 
+def assistant_context(user: dict) -> dict:
+    """
+    What the offline assistant may know: progress and a summary of the current
+    result (risk, score, top reasons, integrity). Deliberately no hashes, file
+    names, provenance or raw evidence.
+    """
+    evidence, result = st.session_state.get("evidence"), st.session_state.get("current_triage")
+    if result and (not evidence or result.get("evidence_key") != evidence.get("key")):
+        result = None
+    ctx = {
+        "role": user["role"], "name": user["full_name"], "username": user["username"],
+        "case_open": bool(active_case()), "evidence_loaded": bool(evidence),
+        "integrity_ok": evidence["chain"].is_intact if evidence else None,
+        "checkpoints": len(evidence["chain"].events) if evidence else 0,
+        "validation": (evidence.get("validation") or {}).get("severity") if evidence else None,
+        "report_ready": bool(result) and "sha256" in st.session_state.get(f"pdf_ready_{result['evidence_id']}", {}),
+        "result": None,
+    }
+    if result:
+        shap_df = result.get("_shap_df")
+        drivers = [] if shap_df is None else [
+            (r["Plain English Indicator"], r["SHAP Value"] > 0, r["SHAP Value"] * 100)
+            for _, r in shap_df.head(3).iterrows()]
+        ctx["result"] = {"risk": result["risk"], "score": result["probability"] * 100,
+                         "malware": bool(result["prediction"]), "anomaly": bool(result["is_anomaly"]),
+                         "drivers": drivers, "actions": RESPONSE_ACTIONS[result["risk"]]}
+    return ctx
+
+
 def render_user_panel(user: dict):
     with st.sidebar:
         ui.sidebar_brand()
@@ -2453,6 +2483,7 @@ def main():
     page = st.navigation(pages, position="top")
     render_user_panel(user)
     page.run()
+    assistant.render(assistant_context(user))   # after the page, so it sees this run's result
 
 
 # ── ENTRY POINT ───────────────────────────────────────────────────────────────
