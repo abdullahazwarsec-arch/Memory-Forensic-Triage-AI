@@ -12,16 +12,16 @@ maxUploadSize = 8192
 toolbarMode = "minimal"
 
 [theme]
-# "Black & Baby Yellow" theme (matches ui_theme.py tokens)
+# "Emerald Forensics" theme (matches ui_theme.py tokens)
 base = "dark"
-primaryColor = "#ffe680"
-backgroundColor = "#000000"
-secondaryBackgroundColor = "#131316"
-textColor = "#f5f5f5"
-borderColor = "#26262c"
-linkColor = "#ffe680"
-codeBackgroundColor = "#0e0e11"
-dataframeHeaderBackgroundColor = "#131316"
+primaryColor = "#10b981"
+backgroundColor = "#070d0b"
+secondaryBackgroundColor = "#0f1a16"
+textColor = "#e3f2ec"
+borderColor = "#1f332c"
+linkColor = "#34d399"
+codeBackgroundColor = "#0b1512"
+dataframeHeaderBackgroundColor = "#0f1a16"
 showSidebarBorder = true
 baseFontSize = 17
 baseRadius = "12px"

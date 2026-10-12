@@ -1,15 +1,17 @@
 """
-Black & baby-yellow UI theme & components for the Streamlit dashboard.
+"Emerald Forensics" UI theme & components for the Streamlit dashboard.
 
-Sleek, minimal look inspired by modern Framer sites: pure-black canvas with a
-soft warm glow, translucent glass cards, tight high-contrast typography
-(Plus Jakarta Sans), pill-shaped buttons/tabs in baby yellow, and macOS-style
+Green-black canvas with an interactive emerald node-network background
+(assets/background.js: parallax with the mouse, cursor links, data pulses,
+click ripples), translucent glass cards, tight high-contrast typography
+(Plus Jakarta Sans), pill-shaped buttons/tabs in emerald, and macOS-style
 app icons: squircle tiles (superellipse mask) with a vertical gradient, glossy
 sheen, drop shadow and a filled glyph. Monospace is kept for evidence data (hashes, metrics).
 All HTML helpers flatten their markup so Markdown never turns indented lines
 into code blocks.
 """
 
+import os
 import re
 import math
 import html as _html
@@ -18,38 +20,39 @@ import streamlit as st
 
 
 # ── Design tokens ─────────────────────────────────────────────────────────────
-BG          = "#000000"
-SURFACE     = "#0b0b0d"
-SURFACE_2   = "#131316"
-BORDER      = "#1f1f24"
-BORDER_HI   = "#2d2d34"
-TEXT        = "#f5f5f5"
-TEXT_2      = "#b9b9c4"
-MUTED       = "#8a8a99"
-ACCENT      = "#ffe680"     # baby yellow
-ACCENT_DEEP = "#f5cf52"     # deeper butter yellow (gradient end)
-ACCENT_SOFT = "#fff3b0"     # pale yellow for text on black (hashes, code)
-INK         = "#2b2300"     # text/glyphs on yellow surfaces
+BG          = "#070d0b"
+SURFACE     = "#0f1a16"
+SURFACE_2   = "#14221d"
+BORDER      = "#1c2b25"
+BORDER_HI   = "#28403a"
+TEXT        = "#e3f2ec"
+TEXT_2      = "#a9c1b8"
+MUTED       = "#7f978e"
+ACCENT      = "#10b981"     # emerald
+ACCENT_DEEP = "#059669"     # deep emerald (gradient end)
+ACCENT_SOFT = "#6ee7b7"     # mint, for text on dark (hashes, code)
+LIME        = "#a3e635"     # highlight
+INK         = "#03140d"     # text/glyphs on emerald surfaces
 
 # Status (always paired with an icon + label, never colour alone).
-# Warning is orange, not yellow, so it never reads as the brand accent.
-GOOD     = "#4ade80"
-WARNING  = "#ff8a3d"
-CRITICAL = "#ff5f5f"
+# "Good" is teal, not green, so a benign/verified state never reads as the brand accent.
+GOOD     = "#2dd4bf"
+WARNING  = "#f5b83d"
+CRITICAL = "#f87171"
 
-# Chart diverging pair (CVD-safe, >=3:1 on the black surface)
+# Chart diverging pair (CVD-safe, >=3:1 on the dark surface)
 TOWARD_MALWARE = "#e66767"
 TOWARD_BENIGN  = "#3987e5"
 
 TONES = {
-    "good":     (GOOD,     "rgba(74, 222, 128, 0.09)",  "rgba(74, 222, 128, 0.32)"),
-    "warning":  (WARNING,  "rgba(255, 138, 61, 0.10)",  "rgba(255, 138, 61, 0.36)"),
-    "critical": (CRITICAL, "rgba(255, 95, 95, 0.10)",   "rgba(255, 95, 95, 0.40)"),
-    "accent":   (ACCENT,   "rgba(255, 230, 128, 0.10)", "rgba(255, 230, 128, 0.38)"),
+    "good":     (GOOD,     "rgba(45, 212, 191, 0.09)",  "rgba(45, 212, 191, 0.32)"),
+    "warning":  (WARNING,  "rgba(245, 184, 61, 0.10)",  "rgba(245, 184, 61, 0.36)"),
+    "critical": (CRITICAL, "rgba(248, 113, 113, 0.10)", "rgba(248, 113, 113, 0.40)"),
+    "accent":   (ACCENT,   "rgba(16, 185, 129, 0.10)",  "rgba(16, 185, 129, 0.40)"),
     "neutral":  (TEXT_2,   "rgba(255, 255, 255, 0.05)", "rgba(255, 255, 255, 0.14)"),
 }
 
-GRADIENT = f"linear-gradient(180deg, #fffbe0 0%, #fff0a3 36%, {ACCENT} 64%, {ACCENT_DEEP} 100%)"
+GRADIENT = f"linear-gradient(180deg, #a7f3d0 0%, #6ee7b7 30%, #34d399 60%, {ACCENT_DEEP} 100%)"
 
 
 def _squircle_mask() -> str:
@@ -90,7 +93,7 @@ def _glyph(value: str, size: str = None) -> str:
 
 
 def mac_icon(name: str, size: int = 42) -> str:
-    """macOS-style app icon: baby-yellow squircle tile with a filled glyph."""
+    """macOS-style app icon: emerald squircle tile with a filled glyph."""
     glyph = icon(name) if re.fullmatch(r"[a-z0-9_]+", name or "") else f'<span class="fx-emoji">{esc(name)}</span>'
     return f'<span class="fx-mac" style="--s:{size}px"><span class="fx-mac-tile">{glyph}</span></span>'
 
@@ -117,73 +120,18 @@ def inject_theme():
   --sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
 }}
 
-/* ── Canvas: live animated background (CSS only, GPU transforms) ──
-   1 aurora glows  2 drifting dot grid  3 rising "memory bits"  4 scan beam */
-.stApp {{ background: var(--bg) !important; color: var(--text) !important; isolation: isolate; }}
-.stApp::before, .stApp::after,
-[data-testid="stAppViewContainer"]::before, [data-testid="stAppViewContainer"]::after {{
-  content: ""; position: fixed; pointer-events: none; z-index: -1; will-change: transform, opacity;
+/* ── Canvas: interactive background (assets/background.js draws on #mt-bg) ── */
+html, body {{ background: var(--bg) !important; }}
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stBottomBlockContainer"] {{
+  background: transparent !important;
 }}
-.stApp::before {{
-  inset: -25%;
-  background:
-    radial-gradient(28% 32% at 30% 22%, rgba(255, 230, 128, 0.16), transparent 70%),
-    radial-gradient(26% 30% at 72% 30%, rgba(245, 207, 82, 0.10), transparent 70%),
-    radial-gradient(30% 34% at 55% 78%, rgba(255, 243, 176, 0.07), transparent 70%);
-  animation: fx-aurora 26s ease-in-out infinite alternate;
-}}
-@keyframes fx-aurora {{
-  0%   {{ transform: translate3d(-4%, -2%, 0) rotate(0deg) scale(1); }}
-  50%  {{ transform: translate3d(3%, 3%, 0) rotate(8deg) scale(1.08); }}
-  100% {{ transform: translate3d(-2%, 5%, 0) rotate(-6deg) scale(1.02); }}
-}}
-.stApp::after {{
-  inset: -64px;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1.2px);
-  background-size: 32px 32px;
-  -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 40%, #000 30%, transparent 85%);
-  mask-image: radial-gradient(ellipse 75% 70% at 50% 40%, #000 30%, transparent 85%);
-  animation: fx-grid 14s linear infinite;
-}}
-@keyframes fx-grid {{ from {{ transform: translate3d(0, 0, 0); }} to {{ transform: translate3d(32px, 32px, 0); }} }}
-[data-testid="stAppViewContainer"] {{ isolation: isolate; background: transparent !important; }}
-[data-testid="stAppViewContainer"]::before {{
-  left: 0; right: 0; top: 0; height: calc(100vh + 320px);
-  background-image:
-    radial-gradient(circle at 12% 18%, rgba(255, 230, 128, 0.55) 0 1.3px, transparent 2px),
-    radial-gradient(circle at 38% 64%, rgba(255, 230, 128, 0.35) 0 1px, transparent 1.6px),
-    radial-gradient(circle at 63% 9%,  rgba(255, 243, 176, 0.45) 0 1.2px, transparent 1.8px),
-    radial-gradient(circle at 81% 47%, rgba(255, 230, 128, 0.30) 0 1px, transparent 1.6px),
-    radial-gradient(circle at 24% 88%, rgba(255, 243, 176, 0.40) 0 1.1px, transparent 1.7px),
-    radial-gradient(circle at 92% 82%, rgba(255, 230, 128, 0.50) 0 1.3px, transparent 2px),
-    radial-gradient(circle at 52% 36%, rgba(255, 255, 255, 0.25) 0 0.9px, transparent 1.4px);
-  background-size: 320px 320px;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 25%, #000 70%, transparent 100%);
-  mask-image: linear-gradient(180deg, transparent 0%, #000 25%, #000 70%, transparent 100%);
-  animation: fx-rise 26s linear infinite;
-}}
-@keyframes fx-rise {{ from {{ transform: translate3d(0, 0, 0); }} to {{ transform: translate3d(0, -320px, 0); }} }}
-[data-testid="stAppViewContainer"]::after {{
-  left: 0; right: 0; top: 0; height: 38vh;
-  background: linear-gradient(180deg, transparent 0%, rgba(255, 230, 128, 0.035) 70%, rgba(255, 230, 128, 0.08) 99%, transparent 100%);
-  animation: fx-scan 11s cubic-bezier(.45, 0, .55, 1) infinite;
-}}
-@keyframes fx-scan {{
-  0%   {{ transform: translate3d(0, -40vh, 0); opacity: 0; }}
-  12%  {{ opacity: 1; }}
-  70%  {{ opacity: 1; }}
-  100% {{ transform: translate3d(0, 110vh, 0); opacity: 0; }}
-}}
-[data-testid="stMain"], [data-testid="stBottomBlockContainer"] {{ background: transparent !important; }}
-@media (prefers-reduced-motion: reduce) {{
-  .stApp::before, .stApp::after,
-  [data-testid="stAppViewContainer"]::before, [data-testid="stAppViewContainer"]::after {{ animation: none !important; }}
-  [data-testid="stAppViewContainer"]::after {{ display: none; }}
-}}
+.stApp {{ color: var(--text) !important; }}
+#mt-bg {{ position: fixed; inset: 0; z-index: -1; pointer-events: none; }}
+[data-testid="stElementContainer"]:has(#mt-bg-anchor) {{ display: none !important; }}
 ::selection {{ background: var(--accent); color: #000; }}
-* {{ scrollbar-width: thin; scrollbar-color: #2a2a30 transparent; }}
+* {{ scrollbar-width: thin; scrollbar-color: #24392f transparent; }}
 ::-webkit-scrollbar {{ width: 9px; height: 9px; }}
-::-webkit-scrollbar-thumb {{ background: #2a2a30; border-radius: 999px; }}
+::-webkit-scrollbar-thumb {{ background: #24392f; border-radius: 999px; }}
 ::-webkit-scrollbar-thumb:hover {{ background: var(--accent-deep); }}
 
 /* ── Typography ── */
@@ -193,8 +141,8 @@ html, body, .stApp, p, li, label, div, input, textarea, button {{ font-family: v
 .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5 {{ font-family: var(--sans) !important; letter-spacing: -0.03em !important; font-weight: 800 !important; }}
 code, pre, .mono {{ font-family: var(--mono) !important; }}
 :not(pre) > code {{
-  background: rgba(255, 230, 128, 0.08) !important; color: var(--accent-soft) !important;
-  border: 1px solid rgba(255, 230, 128, 0.18) !important; border-radius: 7px !important;
+  background: rgba(16, 185, 129, 0.08) !important; color: var(--accent-soft) !important;
+  border: 1px solid rgba(16, 185, 129, 0.18) !important; border-radius: 7px !important;
   padding: 0.1rem 0.42rem !important; font-size: 0.86em !important; overflow-wrap: anywhere;
 }}
 .fx-icon {{
@@ -215,7 +163,7 @@ code, pre, .mono {{ font-family: var(--mono) !important; }}
   -webkit-mask: var(--squircle) center / 100% 100% no-repeat; mask: var(--squircle) center / 100% 100% no-repeat;
   background: var(--gradient); color: var(--ink);
   box-shadow: inset 0 calc(var(--s, 42px) * 0.04) 0 rgba(255, 255, 255, 0.9),
-              inset 0 calc(var(--s, 42px) * -0.08) calc(var(--s, 42px) * 0.14) rgba(150, 110, 0, 0.28);
+              inset 0 calc(var(--s, 42px) * -0.08) calc(var(--s, 42px) * 0.14) rgba(2, 60, 40, 0.28);
 }}
 .fx-mac-tile::before {{
   content: ""; position: absolute; inset: 0;
@@ -236,12 +184,12 @@ code, pre, .mono {{ font-family: var(--mono) !important; }}
   width: 26px !important; min-width: 26px !important; height: 26px !important; flex: 0 0 26px !important;
   font-size: 16px !important; line-height: 1 !important; overflow: hidden;
   border-radius: 8px; color: var(--accent) !important; margin-right: 0.2rem;
-  background: linear-gradient(180deg, #34343c 0%, #1b1b20 100%);
+  background: linear-gradient(180deg, #2c4a40 0%, #13221d 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 2px 6px rgba(0, 0, 0, 0.55);
 }}
 [data-testid="stTopNavLink"][aria-current="page"] [data-testid="stIconMaterial"] {{
   background: var(--gradient); color: var(--ink) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 3px 10px -2px rgba(255, 230, 128, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 3px 10px -2px rgba(16, 185, 129, 0.55);
 }}
 
 [data-testid="stMainBlockContainer"], .block-container {{ padding-top: 5.4rem !important; padding-bottom: 4rem !important; max-width: 1320px !important; }}
@@ -258,13 +206,13 @@ header[data-testid="stHeader"] {{
 [data-testid="stTopNavLink"] span {{ color: var(--text-2) !important; font-weight: 600 !important; }}
 [data-testid="stTopNavLink"]:hover {{ background: rgba(255, 255, 255, 0.05) !important; border-color: rgba(255, 255, 255, 0.10); }}
 [data-testid="stTopNavLink"][aria-current="page"] {{
-  background: rgba(255, 230, 128, 0.12) !important; border-color: rgba(255, 230, 128, 0.40);
+  background: rgba(16, 185, 129, 0.12) !important; border-color: rgba(16, 185, 129, 0.40);
 }}
 [data-testid="stTopNavLink"][aria-current="page"] span {{ color: var(--accent) !important; }}
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {{
-  background: linear-gradient(180deg, rgba(8, 8, 10, 0.86) 0%, rgba(0, 0, 0, 0.9) 100%) !important;
+  background: linear-gradient(180deg, rgba(7, 14, 12, 0.86) 0%, rgba(0, 0, 0, 0.9) 100%) !important;
   backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%);
   border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
 }}
@@ -285,15 +233,15 @@ header[data-testid="stHeader"] {{
 }}
 .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"],
 [data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"] {{
-  background: var(--gradient) !important; border: 1px solid rgba(255, 243, 176, 0.55) !important; color: var(--ink) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 26px -10px rgba(255, 230, 128, 0.75) !important;
+  background: var(--gradient) !important; border: 1px solid rgba(110, 231, 183, 0.55) !important; color: var(--ink) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 26px -10px rgba(16, 185, 129, 0.75) !important;
 }}
 .stButton > button[kind="primary"] *, .stDownloadButton > button[kind="primary"] *,
 [data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"] * {{ color: var(--ink) !important; }}
 .stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover,
 [data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"]:hover {{
   transform: translateY(-2px); filter: brightness(1.05);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 34px -10px rgba(255, 230, 128, 0.9) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 34px -10px rgba(16, 185, 129, 0.9) !important;
 }}
 .stButton > button:not([kind="primary"]), .stDownloadButton > button:not([kind="primary"]),
 [data-testid="stFormSubmitButton"] > button:not([kind="primaryFormSubmit"]) {{
@@ -301,7 +249,7 @@ header[data-testid="stHeader"] {{
 }}
 .stButton > button:not([kind="primary"]):hover, .stDownloadButton > button:not([kind="primary"]):hover,
 [data-testid="stFormSubmitButton"] > button:not([kind="primaryFormSubmit"]):hover {{
-  border-color: var(--accent) !important; background: rgba(255, 230, 128, 0.07) !important; transform: translateY(-2px);
+  border-color: var(--accent) !important; background: rgba(16, 185, 129, 0.07) !important; transform: translateY(-2px);
 }}
 .stButton > button:not([kind="primary"]):hover *, .stDownloadButton > button:not([kind="primary"]):hover * {{ color: var(--accent) !important; }}
 .stButton > button:disabled {{ opacity: 0.4 !important; transform: none !important; }}
@@ -314,19 +262,19 @@ header[data-testid="stHeader"] {{
 
 /* ── Inputs ── */
 div[data-baseweb="select"] > div, [data-testid="stTextInput"] input, [data-testid="stDateInput"] input {{
-  background-color: #0e0e11 !important; border-color: #26262c !important;
+  background-color: #0b1512 !important; border-color: #1f332c !important;
   border-radius: 12px !important; font-size: 1rem !important; min-height: 2.9rem;
 }}
 [data-testid="stTextInput"] > div > div {{ border-radius: 12px !important; }}
 [data-testid="stTextInput"] div:focus-within {{ border-color: var(--accent) !important; }}
-div[data-baseweb="popover"] ul[role="listbox"] {{ background: #0e0e11 !important; border: 1px solid #26262c !important; border-radius: 12px !important; }}
+div[data-baseweb="popover"] ul[role="listbox"] {{ background: #0b1512 !important; border: 1px solid #1f332c !important; border-radius: 12px !important; }}
 li[role="option"] {{ font-size: 0.97rem !important; }}
-li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(255, 230, 128, 0.12) !important; }}
+li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(16, 185, 129, 0.12) !important; }}
 [data-testid="stFileUploader"] section {{
-  background: var(--glass) !important; border: 1.5px dashed #34343c !important; border-radius: var(--radius) !important;
+  background: var(--glass) !important; border: 1.5px dashed #2c4a40 !important; border-radius: var(--radius) !important;
   transition: border-color .2s ease, background .2s ease;
 }}
-[data-testid="stFileUploader"] section:hover {{ border-color: var(--accent) !important; background: rgba(255, 230, 128, 0.04) !important; }}
+[data-testid="stFileUploader"] section:hover {{ border-color: var(--accent) !important; background: rgba(16, 185, 129, 0.04) !important; }}
 
 /* ── Tabs: pill track ── */
 [data-testid="stTabs"] [role="tablist"] {{
@@ -342,7 +290,7 @@ li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(255, 230, 
 [data-testid="stTabs"] [role="tab"] p {{ font-size: 0.97rem !important; font-weight: 700 !important; color: var(--muted) !important; margin: 0 !important; }}
 [data-testid="stTabs"] [role="tab"]:hover {{ background: rgba(255, 255, 255, 0.05); }}
 [data-testid="stTabs"] [role="tab"]:hover p {{ color: var(--text) !important; }}
-[data-testid="stTabs"] [role="tab"][aria-selected="true"] {{ background: var(--gradient) !important; box-shadow: 0 6px 18px -8px rgba(255, 230, 128, 0.8); }}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] {{ background: var(--gradient) !important; box-shadow: 0 6px 18px -8px rgba(16, 185, 129, 0.8); }}
 [data-testid="stTabs"] [role="tab"][aria-selected="true"] p {{ color: var(--ink) !important; }}
 [data-testid="stTabPanel"] {{ padding-top: 1rem; }}
 
@@ -359,6 +307,7 @@ li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(255, 230, 
 [data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"]) {{ background: var(--glass); }}
 [data-testid="stCheckbox"] p {{ font-weight: 600 !important; }}
 footer {{ visibility: hidden !important; }}
+[data-testid="stHeaderActionElements"] {{ display: none !important; }}
 
 /* ── Components ── */
 .fx-card {{
@@ -370,12 +319,12 @@ footer {{ visibility: hidden !important; }}
   position: relative; overflow: hidden;
   display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
   padding: 1.5rem 1.7rem; margin-bottom: 1.3rem; border-radius: 24px;
-  background: linear-gradient(135deg, rgba(255, 230, 128, 0.10), rgba(255, 255, 255, 0.02) 50%);
-  border: 1px solid rgba(255, 230, 128, 0.18);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.10), rgba(255, 255, 255, 0.02) 50%);
+  border: 1px solid rgba(16, 185, 129, 0.18);
 }}
 .fx-header::after {{
   content: ""; position: absolute; right: -80px; top: -120px; width: 320px; height: 320px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 230, 128, 0.18), transparent 65%); pointer-events: none;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.18), transparent 65%); pointer-events: none;
 }}
 .fx-brand {{ display: flex; align-items: center; gap: 1rem; position: relative; z-index: 1; }}
 .fx-eyebrow {{ font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; color: var(--accent); }}
@@ -398,13 +347,13 @@ footer {{ visibility: hidden !important; }}
 }}
 .fx-step-num {{
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
-  font-weight: 800; font-size: 0.92rem; border: 1px solid var(--border-hi); color: var(--muted); background: #0e0e11;
+  font-weight: 800; font-size: 0.92rem; border: 1px solid var(--border-hi); color: var(--muted); background: #0b1512;
 }}
 .fx-step-num .fx-icon {{ font-size: 1.15rem; font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 20; }}
 .fx-step-label {{ font-weight: 700; font-size: 0.96rem; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; }}
 .fx-step-sub {{ font-size: 0.78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 .fx-step.done .fx-step-num {{ background: rgba(74, 222, 128, 0.12); border-color: rgba(74, 222, 128, 0.5); color: var(--good); }}
-.fx-step.active {{ border-color: rgba(255, 230, 128, 0.5); box-shadow: 0 0 0 4px rgba(255, 230, 128, 0.06), 0 10px 30px -18px rgba(255, 230, 128, 0.8); }}
+.fx-step.active {{ border-color: rgba(16, 185, 129, 0.5); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.06), 0 10px 30px -18px rgba(16, 185, 129, 0.8); }}
 .fx-step.active .fx-step-num {{ background: var(--gradient); border-color: transparent; color: var(--ink); }}
 .fx-step.active .fx-step-label {{ color: var(--text); }}
 .fx-step.blocked {{ border-color: rgba(255, 95, 95, 0.45); }}
@@ -421,10 +370,10 @@ footer {{ visibility: hidden !important; }}
   border: 1px solid var(--glass-border); border-radius: 18px; padding: 1rem 1.15rem;
   transition: border-color .2s ease, transform .2s ease;
 }}
-.fx-kpi:hover {{ border-color: rgba(255, 230, 128, 0.35); }}
+.fx-kpi:hover {{ border-color: rgba(16, 185, 129, 0.35); }}
 .fx-kpi::before {{
   content: ""; position: absolute; left: 1.15rem; right: 1.15rem; top: 0; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 230, 128, 0.45), transparent);
+  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.45), transparent);
 }}
 .fx-kpi-label {{ font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }}
 .fx-kpi-value {{ font-size: 1.45rem; font-weight: 800; color: var(--text); margin-top: 0.3rem; overflow-wrap: anywhere; line-height: 1.2; letter-spacing: -0.03em; }}
@@ -438,7 +387,7 @@ footer {{ visibility: hidden !important; }}
 .fx-verdict {{ display: grid; grid-template-columns: 220px 1fr; gap: 1.4rem; align-items: center; }}
 .fx-gauge {{ width: 192px; height: 192px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto; }}
 .fx-gauge-inner {{
-  width: 154px; height: 154px; border-radius: 50%; background: radial-gradient(circle at 50% 30%, #121215, #050506);
+  width: 154px; height: 154px; border-radius: 50%; background: radial-gradient(circle at 50% 30%, #11201b, #050a08);
   display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid var(--border);
 }}
 .fx-gauge-value {{ font-size: 2.35rem; font-weight: 800; letter-spacing: -0.05em; line-height: 1; }}
@@ -462,7 +411,7 @@ footer {{ visibility: hidden !important; }}
   display: flex; align-items: center; gap: 0.85rem; padding: 0.8rem 1.1rem; border-radius: var(--radius-sm);
   background: var(--glass); border: 1px solid var(--glass-border); margin-bottom: 0.55rem; transition: border-color .2s ease;
 }}
-.fx-action:hover {{ border-color: rgba(255, 230, 128, 0.3); }}
+.fx-action:hover {{ border-color: rgba(16, 185, 129, 0.3); }}
 .fx-action-num {{ flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 0.88rem; }}
 .fx-action-text {{ font-size: 0.99rem; color: var(--text); }}
 
@@ -490,6 +439,16 @@ footer {{ visibility: hidden !important; }}
 .fx-prov-strip span {{ font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }}
 .fx-prov-strip b {{ color: var(--text); font-weight: 700; overflow-wrap: anywhere; }}
 .fx-prov-strip em {{ font-style: normal; color: var(--muted); font-size: 0.86rem; }}
+.fx-guide {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.9rem; margin: 0.4rem 0 1rem; }}
+.fx-guide-card {{
+  position: relative; padding: 1.2rem 1.2rem 1.1rem; border-radius: 20px; min-width: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
+  border: 1px solid var(--glass-border); transition: transform .2s ease, border-color .2s ease;
+}}
+.fx-guide-card:hover {{ transform: translateY(-3px); border-color: rgba(16, 185, 129, 0.45); }}
+.fx-guide-num {{ position: absolute; top: 1rem; right: 1.1rem; font-weight: 800; font-size: 0.78rem; color: var(--muted); letter-spacing: 0.12em; }}
+.fx-guide-title {{ font-weight: 800; font-size: 1.05rem; margin-top: 0.85rem; letter-spacing: -0.02em; color: var(--text); }}
+.fx-guide-text {{ color: var(--text-2); font-size: 0.93rem; margin-top: 0.25rem; line-height: 1.5; }}
 .fx-check {{ display: flex; align-items: center; gap: 0.6rem; font-size: 0.94rem; color: var(--text-2); padding: 0.3rem 0; }}
 
 @media (max-width: 760px) {{
@@ -505,6 +464,16 @@ footer {{ visibility: hidden !important; }}
         """,
         unsafe_allow_html=True,
     )
+
+
+_BG_JS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "background.js")
+
+
+def inject_background():
+    """Interactive canvas background (runs once per browser tab; guarded inside the script)."""
+    with open(_BG_JS, "r", encoding="utf-8") as f:
+        script = f.read()
+    st.html(f'<span id="mt-bg-anchor"></span><script>{script}</script>', unsafe_allow_javascript=True)
 
 
 # ── Components ────────────────────────────────────────────────────────────────
@@ -575,6 +544,15 @@ def kpi(label: str, value: str, sub: str = "", mono: bool = False, color: str = 
     value_cls = "fx-kpi-value" + (" mono" if mono else "") + (" small" if small else "")
     return (f'<div class="fx-kpi{" wide" if wide else ""}"><div class="fx-kpi-label">{esc(label)}</div>'
             f'<div class="{value_cls}"{style}>{value}</div>{sub_html}</div>')
+
+
+def guide_steps(items: list):
+    """Numbered step cards: items = [(icon_name, title, text), ...]."""
+    cards = "".join(
+        f'<div class="fx-guide-card"><div class="fx-guide-num">STEP {i}</div>{mac_icon(name, 44)}'
+        f'<div class="fx-guide-title">{esc(title)}</div><div class="fx-guide-text">{esc(text)}</div></div>'
+        for i, (name, title, text) in enumerate(items, start=1))
+    render_html(f'<div class="fx-guide">{cards}</div>')
 
 
 def kpi_row(tiles: list):
