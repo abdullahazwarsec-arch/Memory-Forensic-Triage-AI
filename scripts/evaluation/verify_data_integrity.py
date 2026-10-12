@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_PATH = BASE_DIR / "data" / "Obfuscated-MalMem2022.csv"
 
 if not DATA_PATH.exists():

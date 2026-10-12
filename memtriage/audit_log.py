@@ -25,8 +25,8 @@ archived unchanged (logs/archive/) with a verification report, and a new
 chain starts whose genesis line records the archived file's SHA-256.
 
 Command line:
-    python audit_log.py verify [logs/triage_audit.log]
-    python audit_log.py archive --reason "<why>" [logs/triage_audit.log]
+    python -m memtriage.audit_log verify [logs/triage_audit.log]
+    python -m memtriage.audit_log archive --reason "<why>" [logs/triage_audit.log]
 """
 
 import os
@@ -40,7 +40,7 @@ import hashlib
 import logging
 from datetime import datetime
 
-import evidence_integrity as ei
+from . import evidence_integrity as ei
 
 
 CHAIN_SEP   = " | CHAIN="
@@ -390,6 +390,6 @@ if __name__ == "__main__":
         print(f"Archived {rep_['archived_log']} ({rep_['status']}, SHA-256 {rep_['sha256']})")
         print("A new chain was started; its genesis line references the archived log.")
         sys.exit(0)
-    print("Usage: python audit_log.py verify [log]\n"
-          "       python audit_log.py archive --reason \"<why>\" [log]")
+    print("Usage: python -m memtriage.audit_log verify [log]\n"
+          "       python -m memtriage.audit_log archive --reason \"<why>\" [log]")
     sys.exit(2)

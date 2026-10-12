@@ -30,15 +30,15 @@ from reportlab.lib import colors
 
 import altair as alt
 
-import memdump_extractor
-import ui_theme as ui
-import evidence_integrity as ei
-import input_validation as iv
-import audit_log
-import auth
-import admin_pages
-import help_page
-import assistant
+from memtriage import memdump_extractor
+from memtriage import ui_theme as ui
+from memtriage import evidence_integrity as ei
+from memtriage import input_validation as iv
+from memtriage import audit_log
+from memtriage import auth
+from memtriage import admin_pages
+from memtriage import help_page
+from memtriage import assistant
 
 
 # ── SECTION 2: PATHS & FOLDER SETUP ──────────────────────────────────────────
@@ -57,7 +57,7 @@ ISO_PATH    = (
     if os.path.exists(os.path.join(MODEL_DIR, "isolation_forest.pkl"))
     else os.path.join(BASE_DIR, "isolation_forest.pkl")
 )
-OUTPUT_DIR  = os.path.join(BASE_DIR, "outputs")
+OUTPUT_DIR  = os.environ.get("MEMTRIAGE_OUTPUT_DIR") or os.path.join(BASE_DIR, "outputs")
 LOG_DIR     = os.path.join(BASE_DIR, "logs")
 SAMPLES_DIR = os.path.join(DATA_DIR, "test_samples")
 CASES_DIR   = os.path.join(OUTPUT_DIR, "cases")   # per-case evidence copies, CSVs, manifests

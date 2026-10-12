@@ -12,9 +12,9 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 import streamlit as st
 
-import auth
-import audit_log
-import ui_theme as ui
+from . import auth
+from . import audit_log
+from . import ui_theme as ui
 
 
 AUDIT_LOG_PATH = None   # set by app.py

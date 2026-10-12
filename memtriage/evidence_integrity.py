@@ -15,7 +15,7 @@ re-chained without that key. Model files are also verified against pinned
 SHA-256 hashes (models/model_hashes.json) before they are unpickled.
 
 Verify an exported manifest from the command line:
-    python evidence_integrity.py verify outputs/cases/<case>/<evidence-id>/custody_manifest.json
+    python -m memtriage.evidence_integrity verify outputs/cases/<case>/<evidence-id>/custody_manifest.json
 """
 
 import os
@@ -41,7 +41,7 @@ STATUS_MISSING  = "MISSING"    # artefact could not be re-read for verification
 
 GENESIS_LINK = "0" * 64
 
-BASE_DIR          = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR          = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # project root
 LEDGER_KEY_ENV    = "FORENSICS_LEDGER_KEY"            # optional hex-encoded key (overrides the key file)
 LEDGER_KEY_PATH   = os.path.join(BASE_DIR, "keys", "ledger_hmac.key")
 LINK_ALGORITHM    = "HMAC-SHA256"
@@ -369,7 +369,7 @@ def load_verified_model(path: str, pins_path: str = MODEL_HASHES_PATH):
     name = os.path.basename(path)
     if not os.path.isfile(pins_path):
         raise ModelIntegrityError(f"Model hash pin file missing: {pins_path}. "
-                                  "Run: python scripts/pin_model_hashes.py")
+                                  "Run: python scripts/admin/pin_model_hashes.py")
     with open(pins_path, "r", encoding="utf-8") as f:
         pinned = json.load(f).get("models", {}).get(name)
     if not pinned:
@@ -393,5 +393,5 @@ if __name__ == "__main__":
             for problem in res["problems"]:
                 print(f"    - {problem}")
         sys.exit(0 if all_ok else 1)
-    print("Usage: python evidence_integrity.py verify <custody_manifest.json> [...]")
+    print("Usage: python -m memtriage.evidence_integrity verify <custody_manifest.json> [...]")
     sys.exit(2)

@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_PATH = BASE_DIR / "data" / "Obfuscated-MalMem2022.csv"
 OUTPUT_DIR = BASE_DIR / "data" / "test_samples"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

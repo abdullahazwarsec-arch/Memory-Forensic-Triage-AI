@@ -3,11 +3,11 @@ Dashboard account administration from the command line (e.g. when the only
 administrator is locked out or has forgotten their password). Every action is
 written to the audit log, attributed to "cli:<OS user>".
 
-    python scripts/manage_users.py list
-    python scripts/manage_users.py create <username> "<Full Name>" --role admin
-    python scripts/manage_users.py reset-password <username>
-    python scripts/manage_users.py unlock <username>
-    python scripts/manage_users.py enable <username>
+    python scripts/admin/manage_users.py list
+    python scripts/admin/manage_users.py create <username> "<Full Name>" --role admin
+    python scripts/admin/manage_users.py reset-password <username>
+    python scripts/admin/manage_users.py unlock <username>
+    python scripts/admin/manage_users.py enable <username>
 """
 import os
 import sys
@@ -15,11 +15,10 @@ import getpass
 import argparse
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BASE_DIR))
 
-import audit_log
-import auth
+from memtriage import audit_log, auth
 
 audit_log.setup(os.environ.get("MEMTRIAGE_AUDIT_LOG") or str(BASE_DIR / "logs" / "triage_audit.log"))
 ACTOR = f"cli:{getpass.getuser()}"

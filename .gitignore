@@ -1,27 +1,28 @@
+# ── Python / tooling ─────────────────────────────────────────────────────────
 venv/
+.venv/
 __pycache__/
 *.pyc
-Obfuscated-MalMem2022.csv
-*.pdf
+.pytest_cache/
 .vscode/
+.idea/
 
-# Generated evidence workspaces (contain evidence copies and case data)
-outputs/extracted/
-outputs/cases/
+# ── Dataset (large; download separately - see README) ────────────────────────
+data/Obfuscated-MalMem2022.csv
 
-# Microsoft Office lock files
-~$*
-
-# Hash sidecars of generated reports (the PDFs themselves are not committed)
-outputs/*.pdf.sha256
-
-# Secret custody-ledger HMAC key (generated on first run; never commit or share)
+# ── Secrets: custody-ledger HMAC key and the account store ───────────────────
+# Generated on first run. Never commit or share.
 keys/
 
-# Live audit log and its keyed head file (local evidence records, not source code)
-logs/*.log
-logs/*.head
+# ── Local evidence records (never public) ────────────────────────────────────
+# Everything the dashboard generates: cases, evidence copies, extractions,
+# sealed PDF reports and their .sha256 sidecars.
+outputs/*
+!outputs/.gitkeep
 
-# Archived audit logs (local evidence records)
-logs/archive/
-logs/*.lock
+# Live audit log, its keyed head/lock files and archived logs
+logs/*
+!logs/.gitkeep
+
+# ── Office lock files ────────────────────────────────────────────────────────
+~$*

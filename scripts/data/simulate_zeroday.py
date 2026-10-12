@@ -2,7 +2,7 @@ from pathlib import Path
 import pandas as pd
 import random
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_PATH = BASE_DIR / "data" / "Obfuscated-MalMem2022.csv"
 OUTPUT_PATH = BASE_DIR / "data" / "apt_zero_day.csv"
 

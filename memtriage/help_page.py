@@ -5,8 +5,8 @@ dashboard or to memory forensics.
 
 import streamlit as st
 
-import auth
-import ui_theme as ui
+from . import auth
+from . import ui_theme as ui
 
 
 GLOSSARY = [

@@ -5,7 +5,7 @@ import shap
 import joblib
 import matplotlib.pyplot as plt
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]
 MODEL_PATH = BASE_DIR / "models" / "random_forest_model.pkl"
 DATA_PATH = BASE_DIR / "data" / "Obfuscated-MalMem2022.csv"
 OUTPUTS_DIR = BASE_DIR / "outputs"

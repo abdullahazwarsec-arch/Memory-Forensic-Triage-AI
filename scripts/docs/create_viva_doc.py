@@ -7,9 +7,9 @@ from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = BASE_DIR / "outputs"
-DOCX_PATH = BASE_DIR / "Memory_Forensics_AI_Triage_Viva_Defense_Guide.docx"
+DOCX_PATH = BASE_DIR / "docs" / "Memory_Forensics_AI_Triage_Viva_Defense_Guide.docx"
 
 def set_cell_background(cell, fill_hex):
     tcPr = cell._tc.get_or_add_tcPr()
@@ -301,19 +301,19 @@ def build_document():
     h1.paragraph_format.space_after = Pt(6)
     
     scripts_info = [
-        ("train_model.py", "Binary Model Training Pipeline", "Loads the MalMem2022 dataset, isolates the 55 memory features, splits 80/20 with random_state=42, fits a 100-tree Random Forest classifier, validates accuracy, and serializes the model to models/random_forest_model.pkl."),
-        ("train_multiclass.py", "Multi-Class Malware Family Pipeline", "Extracts malware family labels (Benign, Spyware, Ransomware, Trojan), performs stratified splitting, trains a multi-class Random Forest, outputs a multi-class classification report, and saves models/multiclass_random_forest.pkl."),
-        ("evaluate_model.py", "Academic Model Evaluation & Visualization", "Runs Stratified 3-Fold Cross-Validation, compares Random Forest against Logistic Regression, exports model_comparison.csv, and generates visual artifacts: outputs/confusion_matrix.png and outputs/roc_curve.png."),
-        ("benchmark.py", "Comparative Algorithm Benchmark", "Executes 5-fold cross-validation benchmarking across Random Forest, Gradient Boosting (GBDT), and Logistic Regression to academically justify model selection."),
-        ("explain_model.py", "SHAP Global Explainability Script", "Initializes a shap.TreeExplainer on the saved model and generates outputs/shap_summary.png, graphing the top global features driving malware predictions across the dataset."),
-        ("test_lime.py", "LIME Local Attribution Validation", "Initializes LimeTabularExplainer on memory features, takes a test malware instance, and extracts local linear surrogate rules (feature conditions and weights)."),
-        ("verify_data_integrity.py", "Data Leakage & Integrity Auditor", "Audits dataset rows, verifies 0 duplicate entries, checks for target label leakage in features, and confirms all 55 features are clean numerical metrics."),
-        ("pin_model_hashes.py", "Model Integrity Pinning Utility", "Records the SHA-256 of every trained model in models/model_hashes.json. The dashboard verifies each model against these pins before unpickling it and refuses modified or unpinned models."),
-        ("simulate_zeroday.py", "Adversarial Zero-Day Simulator", "Samples a heavily infected memory profile, mutates key injection and process parameters beyond training distribution, strips labels, and outputs data/apt_zero_day.csv."),
-        ("generate_synthetic_threats.py", "Targeted Threat Profile Generator", "Creates realistic threat scenario profiles in data/test_samples/:\n• fresh_stealth_rootkit.csv (DKOM)\n• fresh_aggressive_ransomware.csv (Handles)\n• fresh_fileless_miner.csv (Injections)"),
-        ("extract_real_benign.py", "Authentic Clean Baseline Extractor", "Extracts unlabelled, genuine benign system memory profiles from the primary dataset and exports real_benign_sample.csv for live dashboard demonstrations."),
-        ("extract_confident_samples.py", "High-Confidence Sample Extractor", "Extracts verified 0% risk benign and 100% risk malware samples (guaranteed_benign.csv and guaranteed_malware.csv) for repeatable evaluation."),
-        ("generate_report.py", "Standalone PDF Report Generator", "ReportLab script that programmatically compiles a forensic triage PDF brief including executive tables, indicators, and incident response playbooks.")
+        ("training/train_model.py", "Binary Model Training Pipeline", "Loads the MalMem2022 dataset, isolates the 55 memory features, splits 80/20 with random_state=42, fits a 100-tree Random Forest classifier, validates accuracy, and serializes the model to models/random_forest_model.pkl."),
+        ("training/train_multiclass.py", "Multi-Class Malware Family Pipeline", "Extracts malware family labels (Benign, Spyware, Ransomware, Trojan), performs stratified splitting, trains a multi-class Random Forest, outputs a multi-class classification report, and saves models/multiclass_random_forest.pkl."),
+        ("evaluation/evaluate_model.py", "Academic Model Evaluation & Visualization", "Runs Stratified 3-Fold Cross-Validation, compares Random Forest against Logistic Regression, exports model_comparison.csv, and generates visual artifacts: outputs/confusion_matrix.png and outputs/roc_curve.png."),
+        ("evaluation/benchmark.py", "Comparative Algorithm Benchmark", "Executes 5-fold cross-validation benchmarking across Random Forest, Gradient Boosting (GBDT), and Logistic Regression to academically justify model selection."),
+        ("evaluation/explain_model.py", "SHAP Global Explainability Script", "Initializes a shap.TreeExplainer on the saved model and generates outputs/shap_summary.png, graphing the top global features driving malware predictions across the dataset."),
+        ("evaluation/lime_example.py", "LIME Local Attribution Validation", "Initializes LimeTabularExplainer on memory features, takes a test malware instance, and extracts local linear surrogate rules (feature conditions and weights)."),
+        ("evaluation/verify_data_integrity.py", "Data Leakage & Integrity Auditor", "Audits dataset rows, verifies 0 duplicate entries, checks for target label leakage in features, and confirms all 55 features are clean numerical metrics."),
+        ("admin/pin_model_hashes.py", "Model Integrity Pinning Utility", "Records the SHA-256 of every trained model in models/model_hashes.json. The dashboard verifies each model against these pins before unpickling it and refuses modified or unpinned models."),
+        ("data/simulate_zeroday.py", "Adversarial Zero-Day Simulator", "Samples a heavily infected memory profile, mutates key injection and process parameters beyond training distribution, strips labels, and outputs data/apt_zero_day.csv."),
+        ("data/generate_synthetic_threats.py", "Targeted Threat Profile Generator", "Creates realistic threat scenario profiles in data/test_samples/:\n• fresh_stealth_rootkit.csv (DKOM)\n• fresh_aggressive_ransomware.csv (Handles)\n• fresh_fileless_miner.csv (Injections)"),
+        ("data/extract_real_benign.py", "Authentic Clean Baseline Extractor", "Extracts unlabelled, genuine benign system memory profiles from the primary dataset and exports real_benign_sample.csv for live dashboard demonstrations."),
+        ("data/extract_confident_samples.py", "High-Confidence Sample Extractor", "Extracts verified 0% risk benign and 100% risk malware samples (guaranteed_benign.csv and guaranteed_malware.csv) for repeatable evaluation."),
+        ("reports/generate_report.py", "Standalone PDF Report Generator", "ReportLab script that programmatically compiles a forensic triage PDF brief including executive tables, indicators, and incident response playbooks.")
     ]
     
     table_scripts = doc.add_table(rows=1, cols=3)
@@ -327,23 +327,25 @@ def build_document():
     doc.add_paragraph().paragraph_format.space_after = Pt(10)
 
     # ── SECTION 7: DASHBOARD DEEP-DIVE (app.py) ───────────────────────────────
-    h1 = doc.add_heading("7. Inside the Web Application (app.py)", level=1)
+    h1 = doc.add_heading("7. Inside the Web Application (app.py + memtriage/)", level=1)
     h1.paragraph_format.space_before = Pt(14)
     h1.paragraph_format.space_after = Pt(6)
-    
+
     doc.add_paragraph(
-        "app.py is the production nerve center of the project, implemented in Streamlit. It provides an intuitive, interactive cyber forensic cockpit styled with a modern glassmorphic dark theme. Here is how each major code section operates:"
+        "app.py is the Streamlit dashboard (triage workflow, models, SHAP/LIME, PDF report and the Cases page). "
+        "The supporting modules live in the memtriage/ package. Here is what each part does:"
     )
-    
+
     app_sections = [
-        ("Section 1-3: Setup & Audit Logger", "Configures logging to logs/triage_audit.log. Every triage run is logged with an immutable timestamp, evidence hash, file name, row number, risk classification, and anomaly flag."),
-        ("Section 4: FEATURE_MEANINGS Dictionary", "A comprehensive plain-English dictionary mapping cryptic Volatility metrics (e.g. handles.avg_handles_per_proc) to plain-English titles, technical descriptions, and real-world threat explanations."),
-        ("Section 5: Cached Resource Loaders", "Uses @st.cache_resource and @st.cache_data to load the Random Forest model, Isolation Forest model, and 500-row background dataset once into memory, keeping dashboard inference instant (< 50ms)."),
-        ("Section 6: Core Triage Function (run_triage)", "Accepts sample DataFrame, aligns columns to expected_cols, calculates malware probability via rf_model.predict_proba, predicts zero-day outliers via iso_model, and computes SHA-256 evidence hash."),
-        ("Section 7: SHAP Explanation Renderer", "Calculates exact Shapley values using TreeExplainer, sorts top 10 impactful indicators, renders 3 Plain-English Decision Driver Cards, and outputs a horizontal waterfall impact chart."),
-        ("Section 8: LIME Explanation Renderer", "Generates local surrogate linear decision rules with LimeTabularExplainer, displaying the observed condition (e.g., malfind.ninjections > 1.00) and whether it pushed the verdict toward Malware or Benign."),
-        ("Section 9: ReportLab PDF Generator", "Dynamically compiles a multi-page, executive Forensic Incident Dossier containing chain-of-custody hashes, verdict tables, top SHAP/LIME indicators, and incident response recommendations."),
-        ("Section 10-12: Interactive UI & Batch Scoring", "Allows analysts to either upload custom CSV files or quick-load verified threat presets, inspect raw metrics, execute single-row deep-dive triage, or run rapid batch scoring across all records.")
+        ("Accounts & sign-in (memtriage/auth.py, admin_pages.py)", "Local accounts with PBKDF2-SHA256 password hashes, Administrator and Analyst roles, a 5-attempt lockout, 30-minute idle timeout and forced password change for new accounts. The account store is sealed with an HMAC so it cannot be edited by hand."),
+        ("Case sessions & provenance (app.py)", "Every analysis runs inside a case opened by the signed-in analyst, recording who the findings are prepared for (recipient, purpose, reference) and, for each evidence item, where it came from (device, custodian, location, collector, time, tool) plus the optional hash reported by the acquisition tool."),
+        ("Evidence integrity (memtriage/evidence_integrity.py)", "SHA-256/MD5 hashing at every stage and an HMAC-keyed chain-of-custody ledger: each event is linked to the previous one with a secret key, so the ledger cannot be edited and re-chained. Model files are verified against pinned hashes before they are loaded."),
+        ("Input validation (memtriage/input_validation.py)", "Rejects oversized, binary or unrelated uploads and checks memory-image file signatures. The feature gate blocks infinite/negative values or >20% missing features and requires analyst acknowledgement for smaller gaps."),
+        ("Memory dump extraction (memtriage/memdump_extractor.py)", "Runs windows.info plus 9 Volatility 3 plugins and builds the 55 CIC-MalMem2022 features, hashing the image before and after to prove it was not modified."),
+        ("Models & explainability (app.py)", "Random Forest probability and risk tier, Isolation Forest zero-day check, SHAP (TreeExplainer) global drivers and LIME local rules, shown as diverging charts and plain-English driver cards."),
+        ("Sealed PDF report (app.py)", "ReportLab dossier with provenance, verdict, SHAP/LIME tables, response actions and the full custody ledger; its SHA-256 is recorded in the ledger, the audit log and a .sha256 sidecar."),
+        ("Tamper-evident audit log (memtriage/audit_log.py)", "Every sign-in, account change, case event and verdict is written as an HMAC-chained line under a file lock; edits, deletions, truncation and duplicates are detected and shown on the administrator's Audit log page."),
+        ("Usability (help_page.py, assistant.py, ui_theme.py)", "Cases page to reopen past work, Help page with glossary and FAQ, an offline help assistant that explains the current result, and the Emerald theme with an interactive background."),
     ]
     for title, desc in app_sections:
         p = doc.add_paragraph()
@@ -392,7 +394,7 @@ def build_document():
         (
             "Q2: What is 'Data Leakage' and how did you mathematically ensure it did not occur?",
             "\"Data leakage occurs when information from outside the training dataset is used to create the model, artificially inflating test performance. In the MalMem2022 dataset, the raw CSV contained columns like 'Category' (which explicitly spelled out the malware family, e.g., 'Trojan-Emotet') and 'Class' ('Benign' vs 'Malware').\n\n"
-            "In our data pipeline (audited in scripts/verify_data_integrity.py), we strictly isolated 'Class' as the prediction label y and completely dropped 'Category' before training. The model was trained purely on the 55 independent volatile memory telemetry features (X). In addition, train-test splitting was performed using stratified sampling prior to any model fitting, ensuring no test data was seen during training.\""
+            "In our data pipeline (audited in scripts/evaluation/verify_data_integrity.py), we strictly isolated 'Class' as the prediction label y and completely dropped 'Category' before training. The model was trained purely on the 55 independent volatile memory telemetry features (X). In addition, train-test splitting was performed using stratified sampling prior to any model fitting, ensuring no test data was seen during training.\""
         ),
         (
             "Q3: Your Random Forest model achieves near 100% accuracy. Is it overfitting?",
@@ -434,15 +436,17 @@ def build_document():
     )
     
     demo_steps = [
-        ("Step 1: Launch the System", "Open your terminal in the project directory and execute: streamlit run app.py. The browser opens to the dark-themed cyber forensic dashboard."),
-        ("Step 2: Demonstrate the Normal Baseline", "Under Telemetry Ingestion Source, select 'Quick-Load Verified Sample' and choose clean_system_baseline.csv. Click 'Execute Autonomous Forensic Triage'. Show that the verdict is NORMAL (green, ~0% risk), and highlight how SHAP values push left towards the clean baseline."),
-        ("Step 3: Demonstrate an Active Ransomware Threat", "Switch the profile to fresh_aggressive_ransomware.csv and click Execute Triage. Show the immediate transition to HIGH RISK (red, >80% risk). Point out the metric cards displaying Malware Confidence and zero-day anomaly indicators."),
-        ("Step 4: Explain the XAI Decision Drivers (SHAP)", "Scroll to Section 04 and show the 3 Plain-English Decision Driver Cards. Explain to your professor: 'Sir, look at handles.avg_handles_per_proc—the AI elevated the malware risk by +45% because this process opened an astronomical number of resource handles, which is the exact behavioral hallmark of ransomware encrypting files.'"),
-        ("Step 5: Show Local Corroboration (LIME)", "Scroll to Section 05 and show the LIME table. Explain that LIME independently verified this decision using local threshold rules, confirming that the model's verdict is robust and unbiased."),
-        ("Step 6: Download the Official PDF Report", "Click 'Download Forensic Report (PDF)'. Open the PDF from the outputs/ folder. Show your professor the executive header, the SHA-256 evidence hash, the triage table, top explainability drivers, and the incident response playbook."),
-        ("Step 7: Verify Chain of Custody", "Scroll to the bottom of the dashboard and expand Section 07 (Live Chain-of-Custody Audit Log). Show that every single action performed during the demo was appended to logs/triage_audit.log with timestamps and cryptographic hashes.")
+        ("Step 1: Launch & sign in", "Double-click run_app.bat (or run: streamlit run app.py). Sign in as an analyst — point out the lockout and that every sign-in is audited."),
+        ("Step 2: Open a case", "Enter the case number and who the findings are prepared for (e.g. an investigating officer, purpose: Incident response). Note that the analyst is the signed-in account, not typed."),
+        ("Step 3: Record provenance & load evidence", "Show the Evidence origin panel (device, custodian, collector, tool, acquisition hash). Choose Sample profile → clean_system_baseline.csv and show the green input-validation check."),
+        ("Step 4: Normal baseline", "Press Analyse snapshot. Show the NORMAL verdict and that SHAP drivers push towards benign."),
+        ("Step 5: Active ransomware", "Switch to fresh_aggressive_ransomware.csv and analyse again. Show the higher risk, the zero-day anomaly flag and the plain-English driver cards; ask the Assistant “explain my result”."),
+        ("Step 6: Explainability", "Open the Explainability tab: SHAP shows each feature's contribution; LIME gives independent local rules. Agreement between them increases trust."),
+        ("Step 7: Provenance & chain of custody", "Open the Provenance tab (where it came from / who it is for), then Chain of custody: every checkpoint MATCHes the acquisition hash and the ledger is HMAC-linked."),
+        ("Step 8: Sealed report", "Download the PDF from the Report tab. Show provenance, verdict, explanations and the ledger, then prove integrity with: certutil -hashfile report.pdf SHA256."),
+        ("Step 9: Audit trail", "Sign in as administrator and open Audit log: sign-ins/sign-outs, account changes and all events, with the integrity banner confirming the log has not been altered."),
     ]
-    
+
     for title, desc in demo_steps:
         p = doc.add_paragraph()
         p.paragraph_format.left_indent = Inches(0.2)

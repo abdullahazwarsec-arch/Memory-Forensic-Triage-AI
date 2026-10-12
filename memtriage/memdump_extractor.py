@@ -21,10 +21,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 
-from evidence_integrity import hash_file, write_hash_sidecar
+from .evidence_integrity import hash_file, write_hash_sidecar
 
 
-BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # project root
 EXTRACT_DIR   = os.path.join(BASE_DIR, "outputs", "extracted")
 DUMP_EXTENSIONS = ["raw", "mem", "vmem", "dmp", "bin", "img", "lime", "dump"]
 

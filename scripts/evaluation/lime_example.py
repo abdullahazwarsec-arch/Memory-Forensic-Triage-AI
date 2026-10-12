@@ -4,7 +4,7 @@ import pandas as pd
 import joblib
 from lime.lime_tabular import LimeTabularExplainer
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]
 MODEL_PATH = BASE_DIR / "models" / "random_forest_model.pkl"
 DATA_PATH = BASE_DIR / "data" / "Obfuscated-MalMem2022.csv"
 

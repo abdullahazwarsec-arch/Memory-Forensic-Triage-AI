@@ -11,7 +11,7 @@ Local user accounts for the triage dashboard.
 * Every authentication and account event is written to the HMAC-chained audit
   log as an "AUTH | EVENT=... | USER=..." line, which the Audit Log page reads.
 
-Recovery from the command line:  python scripts/manage_users.py --help
+Recovery from the command line:  python scripts/admin/manage_users.py --help
 """
 
 import os
@@ -25,7 +25,7 @@ import logging
 import threading
 from datetime import datetime, timezone, timedelta
 
-import evidence_integrity as ei
+from . import evidence_integrity as ei
 
 
 USERS_PATH       = os.environ.get("MEMTRIAGE_USERS_FILE") or os.path.join(ei.BASE_DIR, "keys", "users.json")

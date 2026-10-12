@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import joblib
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 MODEL_PATH = BASE_DIR / "models" / "random_forest_model.pkl"
 OUTPUT_DIR = BASE_DIR / "data" / "test_samples"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

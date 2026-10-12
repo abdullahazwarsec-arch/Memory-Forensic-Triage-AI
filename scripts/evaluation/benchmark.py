@@ -5,7 +5,7 @@ from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_PATH = BASE_DIR / "data" / "Obfuscated-MalMem2022.csv"
 
 print("--- Step 3: Comparative Model Benchmarking ---")

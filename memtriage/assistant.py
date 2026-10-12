@@ -27,9 +27,9 @@ import streamlit as st
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-import auth
-import help_page
-import ui_theme as ui
+from . import auth
+from . import help_page
+from . import ui_theme as ui
 
 
 MATCH_THRESHOLD = 0.30

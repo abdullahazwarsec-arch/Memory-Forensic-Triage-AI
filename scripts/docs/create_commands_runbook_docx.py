@@ -4,7 +4,7 @@ reference for setting up, running, verifying, retraining and publishing
 the MemTriage XAI project.
 
 Run from the project root:
-    python scripts/create_commands_runbook_docx.py
+    python scripts/docs/create_commands_runbook_docx.py
 """
 
 from pathlib import Path
@@ -16,7 +16,7 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import parse_xml, OxmlElement
 from docx.oxml.ns import nsdecls, qn
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 DOCX_PATH = BASE_DIR / "docs" / "Memory_Forensics_Commands_And_Execution_Runbook.docx"
 PROJECT_DIR = r"C:\Users\user\Desktop\Final resarch\Memory_Forensics_Project"
 REPO_URL = "https://github.com/abdullahazwarsec-arch/Memory-Forensic-Triage-AI.git"
@@ -262,17 +262,21 @@ def build_commands_doc():
         ("Start the dashboard", "run_app.bat", "Or: streamlit run app.py"),
         ("Dashboard on this PC only", "streamlit run app.py --server.address localhost", "Recommended with real evidence"),
         ("Stop the dashboard", "Ctrl + C", "In the terminal running it"),
-        ("Dump → feature CSV", 'python memdump_extractor.py "<dump>"', "Prints before/after hashes"),
+        ("Dump → feature CSV", 'python -m memtriage.memdump_extractor "<dump>"', "Prints before/after hashes"),
         ("Identify a dump's OS", 'vol -f "<dump>" windows.info', "Volatility 3"),
         ("SHA-256 of a file (CMD)", 'certutil -hashfile "<file>" SHA256', "Use MD5 for the MD5 hash"),
         ("SHA-256 of a file (PowerShell)", 'Get-FileHash "<file>" -Algorithm SHA256', ""),
         ("Watch the audit log live", r"Get-Content logs\triage_audit.log -Tail 20 -Wait", "PowerShell; Ctrl + C to stop"),
-        ("Check the dataset", "python scripts/verify_data_integrity.py", "Rows, duplicates, features"),
-        ("Train the model", "python scripts/train_model.py", "⚠ Overwrites the dashboard model"),
-        ("Evaluate models", "python scripts/evaluate_model.py", "⚠ Also overwrites the model"),
+        ("Check the dataset", "python scripts/evaluation/verify_data_integrity.py", "Rows, duplicates, features"),
+        ("Train the model", "python scripts/training/train_model.py", "⚠ Overwrites the dashboard model"),
+        ("Evaluate models", "python scripts/evaluation/evaluate_model.py", "⚠ Also overwrites the model"),
+        ("Re-pin model hashes", "python scripts/admin/pin_model_hashes.py", "After any re-training"),
+        ("Verify the audit log", "python -m memtriage.audit_log verify", "VERIFIED = untouched"),
+        ("Unlock / reset an account", "python scripts/admin/manage_users.py --help", "Account recovery"),
+        ("Run the automated tests", "python -m pytest", "Needs requirements-dev.txt"),
         ("See what changed (Git)", "git status", ""),
         ("Save & upload to GitHub", 'git add -A\ngit commit -m "<message>"\ngit push origin main', "Three commands, in order"),
-        ("Rebuild this document", "python scripts/create_commands_runbook_docx.py", ""),
+        ("Rebuild this document", "python scripts/docs/create_commands_runbook_docx.py", ""),
     ], mono_cols=(1,))
 
     # 2 ── Setup
@@ -331,19 +335,26 @@ def build_commands_doc():
             "By default Streamlit also listens on your network (it prints Network/External URLs), so other people "
             "could open it. Use this whenever you handle real evidence.")
     command(doc, "Stop the dashboard", "Ctrl + C", "Press in the terminal window that is running Streamlit.")
-    tip(doc, "After editing any .py file (app.py, ui_theme.py, evidence_integrity.py, memdump_extractor.py), "
+    tip(doc, "After editing any .py file (app.py or anything in memtriage\\), "
              "stop the dashboard with Ctrl + C and start it again so every module reloads.")
 
     heading(doc, "3.1 Using the dashboard (no commands — the clicks)", 2)
     bullets(doc, [
-        ("1. Case session: ", "enter the case number and analyst name (both required), optionally unit and notes, "
-                              "then Open case session. The opening time is recorded automatically."),
-        ("2. Evidence intake: ", "choose Sample profile, Volatility CSV (upload) or Memory dump (upload, or paste a path "
+        ("0. Sign in: ", "the first start asks you to create the administrator; administrators add analysts on "
+                         "the Users page (temporary password, changed at first sign-in)."),
+        ("1. Case session: ", "enter the case number and who the findings are prepared for (recipient, organisation, "
+                              "purpose, reference), then Open case session. The analyst is your account."),
+        ("2. Evidence origin: ", "record where the evidence came from (device, custodian, location, collected by, "
+                                 "when, tool) and optionally the hash printed by the acquisition tool."),
+        ("3. Evidence intake: ", "choose Sample profile, Volatility CSV (upload) or Memory dump (upload, or paste a path "
                                  "for large dumps), then Extract features for dumps."),
-        ("3. Run triage: ", "pick the memory snapshot (row) and press Analyse snapshot. Scan all rows scores every row."),
-        ("4. Results tabs: ", "Overview, Explainability (SHAP / LIME), Chain of custody, Report, Audit log."),
-        ("5. Report: ", "download the sealed PDF from the Report tab; its SHA-256 is shown underneath."),
-        ("6. Finish: ", "press Close case — the closing time is written to the case record and audit log."),
+        ("4. Run triage: ", "pick the memory snapshot (row) and press Analyse snapshot. Scan all rows scores every row."),
+        ("5. Results tabs: ", "Overview, Explainability (SHAP / LIME), Provenance, Chain of custody, Report, Audit log."),
+        ("6. Report: ", "download the sealed PDF from the Report tab; its SHA-256 is shown underneath."),
+        ("7. Finish: ", "press Close case (confirm) — the closing time is written to the case record and audit log. "
+                        "Reopen it later from the Cases page."),
+        ("Help: ", "the Help page has a guide, glossary and FAQ; the Assistant button (bottom-right) answers "
+                   "questions offline, including “explain my result”."),
     ])
 
     heading(doc, "3.2 Dashboard settings file", 2)
@@ -353,12 +364,12 @@ def build_commands_doc():
     # 4 ── Memory dumps
     heading(doc, "4. Memory Dump Analysis (Volatility 3)", 1)
     heading(doc, "4.1 Convert a dump to the 55-feature CSV", 2)
-    command(doc, "Extract features from a memory dump", r'python memdump_extractor.py "C:\Evidence\host01_memory.raw"',
+    command(doc, "Extract features from a memory dump", r'python -m memtriage.memdump_extractor "C:\Evidence\host01_memory.raw"',
             "Hashes the dump, runs windows.info plus 9 Volatility plugins, builds the 55 features, re-hashes the dump "
             "to prove it was not changed, and saves the CSV with a .sha256 sidecar.",
             "progress lines, then “Dump SHA-256 (before)”, “Dump SHA-256 (after) … -> UNCHANGED”, the CSV SHA-256 "
             "and the 55 feature values.")
-    command(doc, "Choose the output folder", r'python memdump_extractor.py "<dump>" --out "<folder>"',
+    command(doc, "Choose the output folder", r'python -m memtriage.memdump_extractor "<dump>" --out "<folder>"',
             "Default output folder: outputs\\extracted\\<dump name>_<date>_<time>\\")
     table(doc, ["File created", "What it is"], [Inches(2.4), Inches(4.3)], [
         ("<dump>_features.csv", "The 55 features — load this in the dashboard as a Volatility CSV"),
@@ -411,7 +422,9 @@ def build_commands_doc():
         ("outputs\\cases\\<CASE>\\<EV-ID>\\evidence\\", "Write-protected working copy of uploaded evidence"),
         ("outputs\\cases\\<CASE>\\<EV-ID>\\extraction\\", "Volatility output and feature CSV (memory dumps)"),
         (r"outputs\forensic_report_<ID>_<time>.pdf", "Sealed PDF report (+ .pdf.sha256 sidecar)"),
-        (r"logs\triage_audit.log", "Audit log: sessions, custody events, verdicts"),
+        (r"logs\triage_audit.log", "HMAC-chained audit log: sign-ins, sessions, custody events, verdicts"),
+        ("logs\\archive\\", "Archived audit logs with their verification reports"),
+        ("keys\\", "Ledger HMAC key and the account store — back up securely, never share"),
     ], mono_cols=(0,))
     command(doc, "List all cases", r"dir outputs\cases")
     command(doc, "Show a case record", r"type outputs\cases\<CASE>\case.json")
@@ -428,7 +441,7 @@ def build_commands_doc():
 
     # 6 ── ML scripts
     heading(doc, "6. Machine Learning & Explainability Scripts", 1)
-    para(doc, "All scripts are run from the project root as: python scripts/<name>.py. "
+    para(doc, "All scripts are run from the project root as: python scripts/<folder>/<name>.py. "
               "Most need data\\Obfuscated-MalMem2022.csv (see 2.6).")
     warning(doc, "train_model.py and evaluate_model.py both OVERWRITE models\\random_forest_model.pkl — the model the "
                  "dashboard uses. Back it up first (command below). There is no script in the project that re-creates "
@@ -440,43 +453,45 @@ def build_commands_doc():
 
     table(doc, ["Script (python scripts/…)", "What it does", "Creates / changes"],
           [Inches(2.0), Inches(2.6), Inches(2.1)], [
-        ("train_model.py", "Trains the binary Random Forest (100 trees) on a random 80/20 split and prints test accuracy",
+        ("training/train_model.py", "Trains the binary Random Forest (100 trees) on a random 80/20 split and prints test accuracy",
          "⚠ models/random_forest_model.pkl"),
-        ("train_multiclass.py", "Trains a Benign / Spyware / Ransomware / Trojan model (not used by the dashboard)",
+        ("training/train_multiclass.py", "Trains a Benign / Spyware / Ransomware / Trojan model (not used by the dashboard)",
          "models/multiclass_random_forest.pkl"),
-        ("evaluate_model.py", "Cross-validation, compares models, draws the plots, saves the best model",
+        ("evaluation/evaluate_model.py", "Cross-validation, compares models, draws the plots, saves the best model",
          "outputs/model_comparison.csv, confusion_matrix.png, roc_curve.png\n⚠ models/random_forest_model.pkl"),
-        ("benchmark.py", "5-fold cross-validation of Random Forest, Gradient Boosting and Logistic Regression",
+        ("evaluation/benchmark.py", "5-fold cross-validation of Random Forest, Gradient Boosting and Logistic Regression",
          "Console output only"),
-        ("explain_model.py", "Global SHAP summary plot of the trained model", "outputs/shap_summary.png"),
-        ("test_lime.py", "Prints the top LIME rules for one sample", "Console output only"),
-        ("verify_data_integrity.py", "Dataset audit: total rows, duplicate rows, label columns, feature count",
+        ("evaluation/explain_model.py", "Global SHAP summary plot of the trained model", "outputs/shap_summary.png"),
+        ("evaluation/lime_example.py", "Prints the top LIME rules for one sample", "Console output only"),
+        ("evaluation/verify_data_integrity.py", "Dataset audit: total rows, duplicate rows, label columns, feature count",
          "Console output only"),
-        ("pin_model_hashes.py", "Records the SHA-256 of every model; the dashboard refuses unpinned or modified models",
+        ("admin/manage_users.py", "Account recovery: list, create, reset-password, unlock, enable (audited)",
+         "keys/users.json"),
+        ("admin/pin_model_hashes.py", "Records the SHA-256 of every model; the dashboard refuses unpinned or modified models",
          "models/model_hashes.json (commit it after re-training)"),
-        ("test.py", "Quick check that the dataset loads and shows the class balance", "Console output only"),
-        ("generate_synthetic_threats.py", "Creates the rootkit, ransomware and cryptominer test profiles",
+        ("data/check_class_balance.py", "Quick check that the dataset loads and shows the class balance", "Console output only"),
+        ("data/generate_synthetic_threats.py", "Creates the rootkit, ransomware and cryptominer test profiles",
          "data/test_samples/fresh_*.csv (overwrites)"),
-        ("simulate_zeroday.py", "Mutates malware rows into a simulated zero-day profile", "data/apt_zero_day.csv"),
-        ("extract_real_benign.py", "Copies one benign dataset row as a test profile",
+        ("data/simulate_zeroday.py", "Mutates malware rows into a simulated zero-day profile", "data/apt_zero_day.csv"),
+        ("data/extract_real_benign.py", "Copies one benign dataset row as a test profile",
          "data/test_samples/real_benign_sample.csv"),
-        ("extract_confident_samples.py", "Saves a confidently benign and a confidently malicious row",
+        ("data/extract_confident_samples.py", "Saves a confidently benign and a confidently malicious row",
          "data/test_samples/guaranteed_benign.csv, guaranteed_malware.csv"),
-        ("generate_report.py", "Standalone example PDF incident brief", "A PDF in outputs/"),
-        ("test_pdf_builder.py", "Tests the PDF layout with SHAP and LIME tables", "outputs/test_full_xai_report.pdf"),
-        ("create_viva_doc.py", "Builds the viva preparation guide", "Memory_Forensics_AI_Triage_Viva_Defense_Guide.docx"),
-        ("create_commands_runbook_docx.py", "Builds this document", "docs/Memory_Forensics_Commands_And_Execution_Runbook.docx"),
+        ("reports/generate_report.py", "Standalone example PDF incident brief", "A PDF in outputs/"),
+        ("reports/pdf_layout_demo.py", "Demonstrates the PDF layout with SHAP and LIME tables", "outputs/test_full_xai_report.pdf"),
+        ("docs/create_viva_doc.py", "Builds the viva preparation guide", "docs/Memory_Forensics_AI_Triage_Viva_Defense_Guide.docx"),
+        ("docs/create_commands_runbook_docx.py", "Builds this document", "docs/Memory_Forensics_Commands_And_Execution_Runbook.docx"),
     ], mono_cols=(0,))
 
     heading(doc, "6.1 Verified example outputs", 2)
-    command(doc, "Dataset audit", "python scripts/verify_data_integrity.py", "",
+    command(doc, "Dataset audit", "python scripts/evaluation/verify_data_integrity.py", "",
             "Total Rows: 58,596 · Duplicate Rows: 534 · Ground Truth Label Columns: ['Category', 'Class'] · "
             "Clean Independent Features Count: 55")
-    command(doc, "Dataset class balance", "python scripts/test.py", "", "Class 0 (Benign): 29,298 · Class 1 (Malware): 29,298")
-    command(doc, "Verify the audit log chain", "python audit_log.py verify", "",
+    command(doc, "Dataset class balance", "python scripts/data/check_class_balance.py", "", "Class 0 (Benign): 29,298 · Class 1 (Malware): 29,298")
+    command(doc, "Verify the audit log chain", "python -m memtriage.audit_log verify", "",
             "VERIFIED  …logs\triage_audit.log  (N chained lines, 584 anchored legacy lines)")
     command(doc, "Verify a custody manifest",
-            "python evidence_integrity.py verify outputs/cases/<case>/<evidence-id>/custody_manifest.json", "",
+            "python -m memtriage.evidence_integrity verify outputs/cases/<case>/<evidence-id>/custody_manifest.json", "",
             "VERIFIED  …custody_manifest.json  (N events)")
     warning(doc, "The ~100% accuracy printed by train_model.py / evaluate_model.py comes from a random split and is "
                  "optimistic: near-identical snapshots of the same sample appear in both training and test data, and "
@@ -490,6 +505,19 @@ def build_commands_doc():
             "Prints the malware probability for every row (0 = benign, 1 = malware).")
     command(doc, "Hash the model file (record it with your results)", r"certutil -hashfile models\random_forest_model.pkl SHA256",
             "Lets you prove which model version produced a result.")
+
+    heading(doc, "6.3 Accounts, audit log and automated tests", 2)
+    command(doc, "List dashboard accounts", "python scripts/admin/manage_users.py list")
+    command(doc, "Unlock an account / reset a password",
+            "python scripts/admin/manage_users.py unlock <username>\npython scripts/admin/manage_users.py reset-password <username>",
+            "Use when the only administrator is locked out. Every action is written to the audit log.")
+    command(doc, "Archive a broken audit log and start a new chain",
+            'python -m memtriage.audit_log archive --reason "<why, at least 10 characters>"',
+            "The old log is kept unchanged in logs\\archive\\ with a verification report.")
+    command(doc, "Install the test tools (once)", "pip install -r requirements-dev.txt")
+    command(doc, "Run all automated tests", "python -m pytest",
+            "Security, integrity, validation, audit-log, account and assistant tests (about 2 minutes).",
+            "… passed")
 
     # 7 ── Git
     heading(doc, "7. Git & GitHub", 1)
@@ -509,8 +537,9 @@ def build_commands_doc():
         ("Undo edits to one file", "git restore <file>", "⚠ Discards your unsaved edits to that file"),
         ("Unstage a file", "git restore --staged <file>", "Keeps your edits, removes them from the next commit"),
     ], mono_cols=(1,))
-    para(doc, "Not uploaded on purpose (.gitignore): venv\\, the dataset CSV, PDFs, outputs\\cases\\, outputs\\extracted\\, "
-              "report .sha256 sidecars, __pycache__ and Word ~$ lock files — evidence and case data should never be public.")
+    para(doc, "Not uploaded on purpose (.gitignore): venv\\, the dataset CSV, everything generated in outputs\\ "
+              "(reports, cases, extractions), keys\\ (ledger key, accounts), logs\\, __pycache__ and Word ~$ lock files "
+              "— evidence, accounts and case data must never be public.")
 
     # 8 ── Housekeeping
     heading(doc, "8. Housekeeping", 1)
@@ -536,6 +565,12 @@ def build_commands_doc():
         ("Dashboard shows old behaviour after editing code", "Modules cached in the running server", "Ctrl + C and start the dashboard again"),
         ("“Analysis blocked — integrity verification failed”", "An evidence file's hash changed since acquisition",
          "Do not continue — check the custody ledger and audit log; re-acquire the evidence"),
+        ("Signed out unexpectedly", "Page reloaded, 30 minutes idle, or account disabled",
+         "Sign in again; use the top menu to move between pages"),
+        ("“Invalid username or password” with the right password", "Account locked after 5 failed attempts",
+         "Wait 15 minutes, or: python scripts/admin/manage_users.py unlock <username>"),
+        ("“Audit log integrity check FAILED”", "A log line was altered, removed or duplicated",
+         "Read the diagnosis on the Audit log page; archive the log (section 6.3) — never edit it"),
         ("PermissionError when saving a report or document", "The file is open in a PDF viewer or Word", "Close the file and try again"),
         ("~$…docx files appear", "Word lock files while a document is open", "Harmless — they disappear when Word closes"),
     ], mono_cols=())
