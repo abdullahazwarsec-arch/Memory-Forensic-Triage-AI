@@ -1,5 +1,5 @@
 """
-MemTriage XAI - explainable AI triage for Windows memory forensics.
+HazMem - explainable AI triage for Windows memory forensics.
 
 Supporting package for the Streamlit dashboard (app.py):
 

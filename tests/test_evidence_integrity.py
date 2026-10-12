@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from memtriage import evidence_integrity as ei
+from hazmem import evidence_integrity as ei
 
 FIELDS = ["seq", "timestamp", "stage", "analyst", "action", "artifact", "role", "sha256", "md5", "size",
           "expected_sha256", "status", "details", "prev_link"]

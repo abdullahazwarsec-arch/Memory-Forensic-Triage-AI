@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 echo ========================================================
-echo Launching Memory Forensics AI Triage Dashboard...
+echo Launching HazMem - Memory Forensics Triage...
 echo ========================================================
 echo.
 

@@ -1,8 +1,12 @@
 <div align="center">
 
-# 🧬 MemTriage XAI
+<img src="hazmem/assets/hazmem_logo.svg" alt="HazMem logo" width="150">
+
+# HazMem
 
 ### Explainable AI triage for Windows memory forensics
+
+*Haz·Mem — the hazmat suit for handling toxic memory.*
 
 Detect malicious Windows memory snapshots with machine learning, **explain every verdict** in plain English,
 and **prove the evidence was never altered** — from acquisition to the sealed PDF report.
@@ -20,6 +24,10 @@ and **prove the evidence was never altered** — from acquisition to the sealed 
 
 > **Final-year university project.** A research prototype, not a production forensic tool —
 > automated verdicts must always be reviewed by a qualified analyst.
+
+**Why “HazMem”?** Malware hiding in RAM is *hazardous material*: volatile, invisible on disk and easily contaminated.
+HazMem handles it like a hazmat team would — sealed, logged and verified at every step — and the logo shows exactly
+that: a skull in a respirator with biohazard eyes.
 
 ---
 
@@ -51,7 +59,7 @@ and **prove the evidence was never altered** — from acquisition to the sealed 
 | 🧾 **Provenance** | Where the evidence came from (device, custodian, location, collector, time, tool) and who it is prepared for (recipient, purpose, reference) — sealed into the ledger and the report. |
 | 📄 **Sealed reports** | PDF dossier with verdict, explanations, provenance, response actions and the full custody ledger; its SHA-256 is recorded in the ledger, the audit log and a `.sha256` sidecar. |
 | 🔐 **Accounts & audit** | Sign-in with roles (Administrator / Analyst), lockout, idle timeout and an **HMAC-chained, tamper-evident audit log** with an Audit log page for administrators. |
-| 🧭 **Usability** | Guided start, Cases page to reopen past work, Help page with glossary & FAQ, and an **offline help assistant** that explains your result. Emerald theme with an interactive background. |
+| 🧭 **Usability** | Guided start, Cases page to reopen past work, Help page with glossary & FAQ, and an **offline help assistant** that explains your result. Toxic-green theme with an interactive background (rising spores, gas clouds and a biohazard watermark that react to the mouse). |
 
 ## Screenshots
 
@@ -143,7 +151,7 @@ Memory-Forensic-Triage-AI/
 ├── requirements-dev.txt           # + pytest and python-docx (tests and documentation)
 ├── pytest.ini
 │
-├── memtriage/                     # Supporting package
+├── hazmem/                     # Supporting package
 │   ├── evidence_integrity.py      # Hashing, HMAC custody ledger, manifest verifier, model hash pinning
 │   ├── audit_log.py               # HMAC-chained audit log: writer, verifier, parser, archive CLI
 │   ├── input_validation.py        # Intake checks (size, CSV, memory-image signatures) + 55-feature gate
@@ -152,8 +160,8 @@ Memory-Forensic-Triage-AI/
 │   ├── admin_pages.py             # Sign-in, first-run setup, Audit log, Users, My account pages
 │   ├── help_page.py               # Help & glossary page
 │   ├── assistant.py               # Offline help assistant
-│   ├── ui_theme.py                # Emerald theme and UI components
-│   └── assets/background.js       # Interactive background (canvas)
+│   ├── ui_theme.py                # Toxic-green theme and UI components
+│   └── assets/                    # background.js (interactive canvas), hazmem_logo.svg / .png (logo, favicon)
 │
 ├── scripts/
 │   ├── training/                  # train_model.py, train_multiclass.py
@@ -194,7 +202,7 @@ or `FORENSICS_LEDGER_KEY`), so the ledger cannot be edited and re-chained withou
 `outputs/cases/<case>/case.json` and `outputs/cases/<case>/<evidence-id>/custody_manifest.json`.
 
 ```bash
-python -m memtriage.evidence_integrity verify outputs/cases/<case>/<evidence-id>/custody_manifest.json
+python -m hazmem.evidence_integrity verify outputs/cases/<case>/<evidence-id>/custody_manifest.json
 certutil -hashfile <report>.pdf SHA256          # Windows   (Linux/macOS: sha256sum <report>.pdf)
 ```
 
@@ -236,7 +244,7 @@ plus 15 malware families across ransomware, spyware and trojan categories.
 local rules around the snapshot as an independent check. Both appear as diverging charts (red = towards malware,
 blue = towards benign) with plain-English descriptions, and both are included in the PDF report.
 
-**Memory dump extraction:** `memtriage/memdump_extractor.py` runs `windows.info` plus 9 Volatility 3 plugins
+**Memory dump extraction:** `hazmem/memdump_extractor.py` runs `windows.info` plus 9 Volatility 3 plugins
 (`pslist`, `dlllist`, `handles`, `ldrmodules`, `malfind`, `psxview`, `modules`, `svcscan`, `callbacks`). A few features are
 approximations because Volatility 3 lacks some checks used to build the dataset (psxview session/desktop views, de-duplicated
 service records, `malfind.protection` as a sum of VAD protection codes). Windows images only.
@@ -247,10 +255,10 @@ Run from the project root with the virtual environment active.
 
 | Task | Command |
 |---|---|
-| Memory dump → feature CSV | `python -m memtriage.memdump_extractor "<dump>" [--out <folder>]` |
-| Verify the audit log | `python -m memtriage.audit_log verify` |
-| Archive a broken audit log | `python -m memtriage.audit_log archive --reason "<why>"` |
-| Verify a custody manifest | `python -m memtriage.evidence_integrity verify <custody_manifest.json>` |
+| Memory dump → feature CSV | `python -m hazmem.memdump_extractor "<dump>" [--out <folder>]` |
+| Verify the audit log | `python -m hazmem.audit_log verify` |
+| Archive a broken audit log | `python -m hazmem.audit_log archive --reason "<why>"` |
+| Verify a custody manifest | `python -m hazmem.evidence_integrity verify <custody_manifest.json>` |
 | Account recovery | `python scripts/admin/manage_users.py list \| unlock <user> \| reset-password <user> \| create <user> "<Name>" --role admin` |
 | Re-pin model hashes (after re-training) | `python scripts/admin/pin_model_hashes.py` |
 | Train / evaluate | `python scripts/training/train_model.py` · `python scripts/evaluation/evaluate_model.py` |
@@ -278,9 +286,9 @@ key, account store, audit log and output folder — real evidence is never touch
 |---|---|
 | `.streamlit/config.toml` | Theme, `localhost` binding, upload limit (8 GB) |
 | `FORENSICS_LEDGER_KEY` | Ledger HMAC key as 64+ hex characters (instead of `keys/ledger_hmac.key`) |
-| `MEMTRIAGE_USERS_FILE` | Alternative account-store location |
-| `MEMTRIAGE_AUDIT_LOG` | Alternative audit-log location |
-| `MEMTRIAGE_OUTPUT_DIR` | Alternative folder for cases, extractions and reports |
+| `HAZMEM_USERS_FILE` | Alternative account-store location |
+| `HAZMEM_AUDIT_LOG` | Alternative audit-log location |
+| `HAZMEM_OUTPUT_DIR` | Alternative folder for cases, extractions and reports |
 
 ## Known limitations
 
@@ -312,4 +320,4 @@ key, account store, audit log and output folder — real evidence is never touch
 ---
 
 <sub>Built as a final-year project in digital forensics and explainable AI. Dataset: CIC-MalMem2022, Canadian Institute
-for Cybersecurity, University of New Brunswick.</sub>
+for Cybersecurity, University of New Brunswick. The HazMem logo is original artwork created for this project.</sub>

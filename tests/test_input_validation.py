@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from memtriage import input_validation as iv
-from memtriage.memdump_extractor import DUMP_EXTENSIONS
+from hazmem import input_validation as iv
+from hazmem.memdump_extractor import DUMP_EXTENSIONS
 
 BIG = 512 * 1024 * 1024
 

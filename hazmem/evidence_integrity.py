@@ -15,7 +15,7 @@ re-chained without that key. Model files are also verified against pinned
 SHA-256 hashes (models/model_hashes.json) before they are unpickled.
 
 Verify an exported manifest from the command line:
-    python -m memtriage.evidence_integrity verify outputs/cases/<case>/<evidence-id>/custody_manifest.json
+    python -m hazmem.evidence_integrity verify outputs/cases/<case>/<evidence-id>/custody_manifest.json
 """
 
 import os
@@ -393,5 +393,5 @@ if __name__ == "__main__":
             for problem in res["problems"]:
                 print(f"    - {problem}")
         sys.exit(0 if all_ok else 1)
-    print("Usage: python -m memtriage.evidence_integrity verify <custody_manifest.json> [...]")
+    print("Usage: python -m hazmem.evidence_integrity verify <custody_manifest.json> [...]")
     sys.exit(2)

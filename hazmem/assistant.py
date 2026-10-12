@@ -304,7 +304,7 @@ def render(ctx: dict):
     with st.container(key="assistant_fab"):
         with st.popover("Assistant", icon=":material/support_agent:"):
             ui.render_html(f'<div class="fx-asst-head">{ui.mac_icon("support_agent", 36)}<div>'
-                           '<div class="fx-asst-title">MemTriage assistant</div>'
+                           '<div class="fx-asst-title">HazMem assistant</div>'
                            '<div class="fx-asst-sub">Offline · answers from the guide and your current result'
                            '</div></div></div>')
             log_box = st.container(height=230, border=False)

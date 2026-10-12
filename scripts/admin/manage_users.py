@@ -18,9 +18,9 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(BASE_DIR))
 
-from memtriage import audit_log, auth
+from hazmem import audit_log, auth
 
-audit_log.setup(os.environ.get("MEMTRIAGE_AUDIT_LOG") or str(BASE_DIR / "logs" / "triage_audit.log"))
+audit_log.setup(os.environ.get("HAZMEM_AUDIT_LOG") or str(BASE_DIR / "logs" / "triage_audit.log"))
 ACTOR = f"cli:{getpass.getuser()}"
 
 

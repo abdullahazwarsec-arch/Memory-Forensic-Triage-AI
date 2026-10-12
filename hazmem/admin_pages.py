@@ -57,7 +57,7 @@ def local_time(iso_utc: str) -> str:
 
 
 def _brand_header(subtitle: str):
-    ui.page_header("MemTriage", "XAI", subtitle, [ui.pill("Restricted access", "accent")])
+    ui.page_header("Haz", "Mem", subtitle, [ui.pill("Restricted access", "accent")])
 
 
 # ── First run & sign-in ───────────────────────────────────────────────────────

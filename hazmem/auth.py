@@ -28,7 +28,7 @@ from datetime import datetime, timezone, timedelta
 from . import evidence_integrity as ei
 
 
-USERS_PATH       = os.environ.get("MEMTRIAGE_USERS_FILE") or os.path.join(ei.BASE_DIR, "keys", "users.json")
+USERS_PATH       = os.environ.get("HAZMEM_USERS_FILE") or os.path.join(ei.BASE_DIR, "keys", "users.json")
 ROLES            = ("admin", "analyst")
 PBKDF2_ITER      = 600_000
 MAX_FAILED       = 5

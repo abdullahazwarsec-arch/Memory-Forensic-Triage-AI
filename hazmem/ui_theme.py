@@ -1,9 +1,9 @@
 """
 "Emerald Forensics" UI theme & components for the Streamlit dashboard.
 
-Green-black canvas with an interactive emerald node-network background
-(assets/background.js: parallax with the mouse, cursor links, data pulses,
-click ripples), translucent glass cards, tight high-contrast typography
+Green-black canvas with an interactive "toxic atmosphere" background
+(assets/background.js: rising spores with mouse parallax, cursor links, gas clouds,
+a turning biohazard watermark, click bursts), translucent glass cards, tight high-contrast typography
 (Plus Jakarta Sans), pill-shaped buttons/tabs in emerald, and macOS-style
 app icons: squircle tiles (superellipse mask) with a vertical gradient, glossy
 sheen, drop shadow and a filled glyph. Monospace is kept for evidence data (hashes, metrics).
@@ -14,6 +14,7 @@ into code blocks.
 import os
 import re
 import math
+import base64
 import html as _html
 from urllib.parse import quote
 import streamlit as st
@@ -327,6 +328,11 @@ footer {{ visibility: hidden !important; }}
   background: radial-gradient(circle, rgba(16, 185, 129, 0.18), transparent 65%); pointer-events: none;
 }}
 .fx-brand {{ display: flex; align-items: center; gap: 1rem; position: relative; z-index: 1; }}
+.fx-logo-img {{
+  flex: 0 0 auto; display: block; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 18px rgba(74, 222, 128, 0.28));
+  transition: transform .3s cubic-bezier(.2, .9, .3, 1.4), filter .3s ease;
+}}
+.fx-logo-img:hover {{ transform: rotate(-6deg) scale(1.06); filter: drop-shadow(0 8px 16px rgba(0,0,0,.65)) drop-shadow(0 0 26px rgba(74,222,128,.55)); }}
 .fx-eyebrow {{ font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; color: var(--accent); }}
 .fx-title {{ font-size: 1.9rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text); line-height: 1.1; }}
 .fx-title span {{ background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }}
@@ -514,18 +520,31 @@ def pill(text: str, tone: str = "accent", dot: bool = True) -> str:
             f'{d}{esc(text)}</span>')
 
 
-def logo(size: int = 54) -> str:
-    return mac_icon("memory", size)
+_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+LOGO_SVG = os.path.join(_ASSETS, "hazmem_logo.svg")
+LOGO_PNG = os.path.join(_ASSETS, "hazmem_logo.png")
+ICON_PNG = os.path.join(_ASSETS, "hazmem_icon_64.png")
+_LOGO_URI = None
 
 
-def page_header(title_main: str, title_accent: str, subtitle: str, chips: list, eyebrow: str = "Memory forensics lab"):
+def logo(size: int = 58) -> str:
+    """The HazMem logo (original vector artwork) as an inline image."""
+    global _LOGO_URI
+    if _LOGO_URI is None:
+        with open(LOGO_SVG, "rb") as f:
+            _LOGO_URI = "data:image/svg+xml;base64," + base64.b64encode(f.read()).decode("ascii")
+    return f'<img class="fx-logo-img" src="{_LOGO_URI}" width="{size}" height="{size}" alt="HazMem logo">'
+
+
+def page_header(title_main: str, title_accent: str, subtitle: str, chips: list,
+                eyebrow: str = "Memory forensics · Explainable AI"):
     render_html(f"""
     <div class="fx-header">
       <div class="fx-brand">
-        {logo()}
+        {logo(66)}
         <div>
           <div class="fx-eyebrow">{esc(eyebrow)}</div>
-          <div class="fx-title">{esc(title_main)} <span>{esc(title_accent)}</span></div>
+          <div class="fx-title">{esc(title_main)}<span>{esc(title_accent)}</span></div>
           <div class="fx-sub">{esc(subtitle)}</div>
         </div>
       </div>
@@ -537,8 +556,8 @@ def page_header(title_main: str, title_accent: str, subtitle: str, chips: list, 
 def sidebar_brand():
     render_html(f"""
     <div class="fx-side-brand">
-      {logo(42)}
-      <div><div style="font-weight:800;font-size:1.18rem;letter-spacing:-0.03em;">MemTriage&nbsp;<span style="background:{GRADIENT};-webkit-background-clip:text;background-clip:text;color:transparent;">XAI</span></div>
+      {logo(46)}
+      <div><div style="font-weight:800;font-size:1.25rem;letter-spacing:-0.03em;">Haz<span style="background:{GRADIENT};-webkit-background-clip:text;background-clip:text;color:transparent;">Mem</span></div>
       <div style="color:var(--muted);font-size:0.82rem;">Memory forensics lab</div></div>
     </div>
     """)

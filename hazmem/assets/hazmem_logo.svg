@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256" role="img" aria-label="HazMem logo">
+  <title>HazMem</title>
+  <!-- Original artwork for HazMem: skull in a toxic-green respirator with biohazard eyes. -->
+  <defs>
+    <linearGradient id="bone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f1ede2"/>
+      <stop offset="0.6" stop-color="#d6d0c0"/>
+      <stop offset="1" stop-color="#b3ac9b"/>
+    </linearGradient>
+    <linearGradient id="maskGreen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#86efac"/>
+      <stop offset="0.45" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5b6662"/>
+      <stop offset="1" stop-color="#29312e"/>
+    </linearGradient>
+    <radialGradient id="socketGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#14532d"/>
+      <stop offset="0.7" stop-color="#06120d"/>
+      <stop offset="1" stop-color="#030806"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Biohazard symbol in a 2x2 box centred on the origin -->
+    <mask id="bioCut" maskUnits="userSpaceOnUse" x="-1.2" y="-1.2" width="2.4" height="2.4">
+      <rect x="-1.2" y="-1.2" width="2.4" height="2.4" fill="#fff"/>
+      <circle cx="0.0" cy="-0.64" r="0.30" fill="#000"/>
+      <circle cx="0.5543" cy="0.32" r="0.30" fill="#000"/>
+      <circle cx="-0.5543" cy="0.32" r="0.30" fill="#000"/>
+      <circle r="0.12" fill="#000"/>
+    </mask>
+    <g id="bio" mask="url(#bioCut)" fill="#4ade80" stroke="none">
+      <circle cx="0.0" cy="-0.48" r="0.42"/>
+      <circle cx="0.4157" cy="0.24" r="0.42"/>
+      <circle cx="-0.4157" cy="0.24" r="0.42"/>
+      <circle r="0.31" fill="none" stroke="#4ade80" stroke-width="0.09"/>
+    </g>
+  </defs>
+
+  <!-- Skull -->
+  <path d="M128 14 C188 14 216 56 213 104 C211 130 203 146 194 156 L62 156 C53 146 45 130 43 104 C40 56 68 14 128 14 Z"
+        fill="url(#bone)" stroke="#121a17" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M84 30 C76 38 70 50 68 62" fill="none" stroke="#fff" stroke-opacity="0.55" stroke-width="5" stroke-linecap="round"/>
+  <path d="M150 22 L146 34 L154 42 L149 52" fill="none" stroke="#121a17" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M60 78 L70 84 L68 94" fill="none" stroke="#121a17" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Eye sockets with glowing biohazard -->
+  <g>
+    <ellipse cx="94" cy="106" rx="27" ry="25" fill="url(#socketGlow)" stroke="#121a17" stroke-width="5"/>
+    <ellipse cx="162" cy="106" rx="27" ry="25" fill="url(#socketGlow)" stroke="#121a17" stroke-width="5"/>
+    <g filter="url(#glow)">
+      <use xlink:href="#bio" href="#bio" transform="translate(94 107) scale(22)"/>
+      <use xlink:href="#bio" href="#bio" transform="translate(162 107) scale(22)"/>
+    </g>
+  </g>
+
+  <!-- Straps -->
+  <path d="M74 152 L50 116" stroke="#121a17" stroke-width="13" stroke-linecap="round"/>
+  <path d="M74 152 L50 116" stroke="#3a4541" stroke-width="7" stroke-linecap="round"/>
+  <path d="M182 152 L206 116" stroke="#121a17" stroke-width="13" stroke-linecap="round"/>
+  <path d="M182 152 L206 116" stroke="#3a4541" stroke-width="7" stroke-linecap="round"/>
+  <rect x="55" y="124" width="14" height="12" rx="2" fill="#8a948f" stroke="#121a17" stroke-width="3" transform="rotate(-34 62 130)"/>
+  <rect x="187" y="124" width="14" height="12" rx="2" fill="#8a948f" stroke="#121a17" stroke-width="3" transform="rotate(34 194 130)"/>
+
+  <!-- Respirator -->
+  <path d="M66 142 C90 128 112 126 128 134 C144 126 166 128 190 142 C196 176 180 208 152 226 L104 226 C76 208 60 176 66 142 Z"
+        fill="url(#maskGreen)" stroke="#121a17" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M80 148 C96 140 112 140 122 144" fill="none" stroke="#dcfce7" stroke-opacity="0.75" stroke-width="5" stroke-linecap="round"/>
+  <path d="M128 136 L128 190" stroke="#065f46" stroke-opacity="0.65" stroke-width="3"/>
+  <path d="M92 168 C104 178 116 184 128 186 C140 184 152 178 164 168" fill="none" stroke="#065f46" stroke-opacity="0.55" stroke-width="3"/>
+
+  <!-- Front valve -->
+  <path d="M106 190 L150 190 L160 236 L96 236 Z" fill="url(#steel)" stroke="#121a17" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M112 202 L144 202 M110 212 L146 212 M108 222 L148 222" stroke="#121a17" stroke-width="3.5" stroke-linecap="round"/>
+
+  <!-- Filter cartridges -->
+  <g>
+    <circle cx="58" cy="196" r="38" fill="url(#steel)" stroke="#121a17" stroke-width="5"/>
+    <circle cx="58" cy="196" r="27" fill="none" stroke="#6b7672" stroke-width="5"/>
+    <circle cx="58" cy="196" r="15" fill="#1b2320" stroke="#121a17" stroke-width="3"/>
+    <path d="M58 158 L58 168 M58 224 L58 234 M20 196 L30 196 M86 196 L96 196" stroke="#121a17" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="58" cy="196" r="5" fill="#4ade80" filter="url(#glow)"/>
+  </g>
+  <g>
+    <circle cx="198" cy="196" r="38" fill="url(#steel)" stroke="#121a17" stroke-width="5"/>
+    <circle cx="198" cy="196" r="27" fill="none" stroke="#6b7672" stroke-width="5"/>
+    <circle cx="198" cy="196" r="15" fill="#1b2320" stroke="#121a17" stroke-width="3"/>
+    <path d="M198 158 L198 168 M198 224 L198 234 M160 196 L170 196 M226 196 L236 196" stroke="#121a17" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="198" cy="196" r="5" fill="#4ade80" filter="url(#glow)"/>
+  </g>
+</svg>

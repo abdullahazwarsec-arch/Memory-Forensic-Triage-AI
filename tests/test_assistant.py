@@ -1,7 +1,7 @@
 """Offline help assistant: topic matching, refusal of off-topic questions, context answers."""
 import pytest
 
-from memtriage import assistant
+from hazmem import assistant
 
 CASES = [
     ("why did it say malware?", "explain_result"),

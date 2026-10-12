@@ -1,7 +1,7 @@
 """
 Builds Memory_Forensics_Commands_And_Execution_Runbook.docx — the command
 reference for setting up, running, verifying, retraining and publishing
-the MemTriage XAI project.
+the HazMem project.
 
 Run from the project root:
     python scripts/docs/create_commands_runbook_docx.py
@@ -53,7 +53,7 @@ def set_left_bar(cell, color_hex):
 def add_page_number_footer(section):
     p = section.footer.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("MemTriage XAI — Commands & Execution Runbook · Page ")
+    run = p.add_run("HazMem — Commands & Execution Runbook · Page ")
     run.font.size = Pt(8.5)
     run.font.color.rgb = GREY
     field_run = p.add_run()
@@ -221,7 +221,7 @@ def build_commands_doc():
 
     # Title block
     p = doc.add_paragraph()
-    r = p.add_run("MemTriage XAI — Memory Forensics AI Triage")
+    r = p.add_run("HazMem — Memory Forensics AI Triage")
     r.font.size = Pt(22)
     r.bold = True
     r.font.color.rgb = NAVY
@@ -262,7 +262,7 @@ def build_commands_doc():
         ("Start the dashboard", "run_app.bat", "Or: streamlit run app.py"),
         ("Dashboard on this PC only", "streamlit run app.py --server.address localhost", "Recommended with real evidence"),
         ("Stop the dashboard", "Ctrl + C", "In the terminal running it"),
-        ("Dump → feature CSV", 'python -m memtriage.memdump_extractor "<dump>"', "Prints before/after hashes"),
+        ("Dump → feature CSV", 'python -m hazmem.memdump_extractor "<dump>"', "Prints before/after hashes"),
         ("Identify a dump's OS", 'vol -f "<dump>" windows.info', "Volatility 3"),
         ("SHA-256 of a file (CMD)", 'certutil -hashfile "<file>" SHA256', "Use MD5 for the MD5 hash"),
         ("SHA-256 of a file (PowerShell)", 'Get-FileHash "<file>" -Algorithm SHA256', ""),
@@ -271,7 +271,7 @@ def build_commands_doc():
         ("Train the model", "python scripts/training/train_model.py", "⚠ Overwrites the dashboard model"),
         ("Evaluate models", "python scripts/evaluation/evaluate_model.py", "⚠ Also overwrites the model"),
         ("Re-pin model hashes", "python scripts/admin/pin_model_hashes.py", "After any re-training"),
-        ("Verify the audit log", "python -m memtriage.audit_log verify", "VERIFIED = untouched"),
+        ("Verify the audit log", "python -m hazmem.audit_log verify", "VERIFIED = untouched"),
         ("Unlock / reset an account", "python scripts/admin/manage_users.py --help", "Account recovery"),
         ("Run the automated tests", "python -m pytest", "Needs requirements-dev.txt"),
         ("See what changed (Git)", "git status", ""),
@@ -335,7 +335,7 @@ def build_commands_doc():
             "By default Streamlit also listens on your network (it prints Network/External URLs), so other people "
             "could open it. Use this whenever you handle real evidence.")
     command(doc, "Stop the dashboard", "Ctrl + C", "Press in the terminal window that is running Streamlit.")
-    tip(doc, "After editing any .py file (app.py or anything in memtriage\\), "
+    tip(doc, "After editing any .py file (app.py or anything in hazmem\\), "
              "stop the dashboard with Ctrl + C and start it again so every module reloads.")
 
     heading(doc, "3.1 Using the dashboard (no commands — the clicks)", 2)
@@ -364,12 +364,12 @@ def build_commands_doc():
     # 4 ── Memory dumps
     heading(doc, "4. Memory Dump Analysis (Volatility 3)", 1)
     heading(doc, "4.1 Convert a dump to the 55-feature CSV", 2)
-    command(doc, "Extract features from a memory dump", r'python -m memtriage.memdump_extractor "C:\Evidence\host01_memory.raw"',
+    command(doc, "Extract features from a memory dump", r'python -m hazmem.memdump_extractor "C:\Evidence\host01_memory.raw"',
             "Hashes the dump, runs windows.info plus 9 Volatility plugins, builds the 55 features, re-hashes the dump "
             "to prove it was not changed, and saves the CSV with a .sha256 sidecar.",
             "progress lines, then “Dump SHA-256 (before)”, “Dump SHA-256 (after) … -> UNCHANGED”, the CSV SHA-256 "
             "and the 55 feature values.")
-    command(doc, "Choose the output folder", r'python -m memtriage.memdump_extractor "<dump>" --out "<folder>"',
+    command(doc, "Choose the output folder", r'python -m hazmem.memdump_extractor "<dump>" --out "<folder>"',
             "Default output folder: outputs\\extracted\\<dump name>_<date>_<time>\\")
     table(doc, ["File created", "What it is"], [Inches(2.4), Inches(4.3)], [
         ("<dump>_features.csv", "The 55 features — load this in the dashboard as a Volatility CSV"),
@@ -488,10 +488,10 @@ def build_commands_doc():
             "Total Rows: 58,596 · Duplicate Rows: 534 · Ground Truth Label Columns: ['Category', 'Class'] · "
             "Clean Independent Features Count: 55")
     command(doc, "Dataset class balance", "python scripts/data/check_class_balance.py", "", "Class 0 (Benign): 29,298 · Class 1 (Malware): 29,298")
-    command(doc, "Verify the audit log chain", "python -m memtriage.audit_log verify", "",
+    command(doc, "Verify the audit log chain", "python -m hazmem.audit_log verify", "",
             "VERIFIED  …logs\triage_audit.log  (N chained lines, 584 anchored legacy lines)")
     command(doc, "Verify a custody manifest",
-            "python -m memtriage.evidence_integrity verify outputs/cases/<case>/<evidence-id>/custody_manifest.json", "",
+            "python -m hazmem.evidence_integrity verify outputs/cases/<case>/<evidence-id>/custody_manifest.json", "",
             "VERIFIED  …custody_manifest.json  (N events)")
     warning(doc, "The ~100% accuracy printed by train_model.py / evaluate_model.py comes from a random split and is "
                  "optimistic: near-identical snapshots of the same sample appear in both training and test data, and "
@@ -512,7 +512,7 @@ def build_commands_doc():
             "python scripts/admin/manage_users.py unlock <username>\npython scripts/admin/manage_users.py reset-password <username>",
             "Use when the only administrator is locked out. Every action is written to the audit log.")
     command(doc, "Archive a broken audit log and start a new chain",
-            'python -m memtriage.audit_log archive --reason "<why, at least 10 characters>"',
+            'python -m hazmem.audit_log archive --reason "<why, at least 10 characters>"',
             "The old log is kept unchanged in logs\\archive\\ with a verification report.")
     command(doc, "Install the test tools (once)", "pip install -r requirements-dev.txt")
     command(doc, "Run all automated tests", "python -m pytest",

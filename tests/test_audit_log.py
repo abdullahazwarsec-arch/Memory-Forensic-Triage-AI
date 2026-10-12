@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from memtriage import audit_log
+from hazmem import audit_log
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ def test_module_reload_leaves_a_single_writer(tmp_path):
 
 def test_concurrent_processes_keep_one_valid_chain(tmp_path, root):
     path = str(tmp_path / "multi.log")
-    code = ("import sys,logging; sys.path.insert(0, r'%s'); from memtriage import audit_log; "
+    code = ("import sys,logging; sys.path.insert(0, r'%s'); from hazmem import audit_log; "
             "audit_log.setup(r'%s'); lg=logging.getLogger('triage'); "
             "[lg.info('proc %%s line %%d' %% (sys.argv[1], i)) for i in range(25)]") % (root, path)
     procs = [subprocess.Popen([sys.executable, "-c", code, str(n)]) for n in range(4)]

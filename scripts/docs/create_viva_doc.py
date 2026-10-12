@@ -327,24 +327,24 @@ def build_document():
     doc.add_paragraph().paragraph_format.space_after = Pt(10)
 
     # ── SECTION 7: DASHBOARD DEEP-DIVE (app.py) ───────────────────────────────
-    h1 = doc.add_heading("7. Inside the Web Application (app.py + memtriage/)", level=1)
+    h1 = doc.add_heading("7. Inside the Web Application (app.py + hazmem/)", level=1)
     h1.paragraph_format.space_before = Pt(14)
     h1.paragraph_format.space_after = Pt(6)
 
     doc.add_paragraph(
         "app.py is the Streamlit dashboard (triage workflow, models, SHAP/LIME, PDF report and the Cases page). "
-        "The supporting modules live in the memtriage/ package. Here is what each part does:"
+        "The supporting modules live in the hazmem/ package. Here is what each part does:"
     )
 
     app_sections = [
-        ("Accounts & sign-in (memtriage/auth.py, admin_pages.py)", "Local accounts with PBKDF2-SHA256 password hashes, Administrator and Analyst roles, a 5-attempt lockout, 30-minute idle timeout and forced password change for new accounts. The account store is sealed with an HMAC so it cannot be edited by hand."),
+        ("Accounts & sign-in (hazmem/auth.py, admin_pages.py)", "Local accounts with PBKDF2-SHA256 password hashes, Administrator and Analyst roles, a 5-attempt lockout, 30-minute idle timeout and forced password change for new accounts. The account store is sealed with an HMAC so it cannot be edited by hand."),
         ("Case sessions & provenance (app.py)", "Every analysis runs inside a case opened by the signed-in analyst, recording who the findings are prepared for (recipient, purpose, reference) and, for each evidence item, where it came from (device, custodian, location, collector, time, tool) plus the optional hash reported by the acquisition tool."),
-        ("Evidence integrity (memtriage/evidence_integrity.py)", "SHA-256/MD5 hashing at every stage and an HMAC-keyed chain-of-custody ledger: each event is linked to the previous one with a secret key, so the ledger cannot be edited and re-chained. Model files are verified against pinned hashes before they are loaded."),
-        ("Input validation (memtriage/input_validation.py)", "Rejects oversized, binary or unrelated uploads and checks memory-image file signatures. The feature gate blocks infinite/negative values or >20% missing features and requires analyst acknowledgement for smaller gaps."),
-        ("Memory dump extraction (memtriage/memdump_extractor.py)", "Runs windows.info plus 9 Volatility 3 plugins and builds the 55 CIC-MalMem2022 features, hashing the image before and after to prove it was not modified."),
+        ("Evidence integrity (hazmem/evidence_integrity.py)", "SHA-256/MD5 hashing at every stage and an HMAC-keyed chain-of-custody ledger: each event is linked to the previous one with a secret key, so the ledger cannot be edited and re-chained. Model files are verified against pinned hashes before they are loaded."),
+        ("Input validation (hazmem/input_validation.py)", "Rejects oversized, binary or unrelated uploads and checks memory-image file signatures. The feature gate blocks infinite/negative values or >20% missing features and requires analyst acknowledgement for smaller gaps."),
+        ("Memory dump extraction (hazmem/memdump_extractor.py)", "Runs windows.info plus 9 Volatility 3 plugins and builds the 55 CIC-MalMem2022 features, hashing the image before and after to prove it was not modified."),
         ("Models & explainability (app.py)", "Random Forest probability and risk tier, Isolation Forest zero-day check, SHAP (TreeExplainer) global drivers and LIME local rules, shown as diverging charts and plain-English driver cards."),
         ("Sealed PDF report (app.py)", "ReportLab dossier with provenance, verdict, SHAP/LIME tables, response actions and the full custody ledger; its SHA-256 is recorded in the ledger, the audit log and a .sha256 sidecar."),
-        ("Tamper-evident audit log (memtriage/audit_log.py)", "Every sign-in, account change, case event and verdict is written as an HMAC-chained line under a file lock; edits, deletions, truncation and duplicates are detected and shown on the administrator's Audit log page."),
+        ("Tamper-evident audit log (hazmem/audit_log.py)", "Every sign-in, account change, case event and verdict is written as an HMAC-chained line under a file lock; edits, deletions, truncation and duplicates are detected and shown on the administrator's Audit log page."),
         ("Usability (help_page.py, assistant.py, ui_theme.py)", "Cases page to reopen past work, Help page with glossary and FAQ, an offline help assistant that explains the current result, and the Emerald theme with an interactive background."),
     ]
     for title, desc in app_sections:

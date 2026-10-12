@@ -24,21 +24,21 @@ from lime.lime_tabular import LimeTabularExplainer
 import streamlit as st
 
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 import altair as alt
 
-from memtriage import memdump_extractor
-from memtriage import ui_theme as ui
-from memtriage import evidence_integrity as ei
-from memtriage import input_validation as iv
-from memtriage import audit_log
-from memtriage import auth
-from memtriage import admin_pages
-from memtriage import help_page
-from memtriage import assistant
+from hazmem import memdump_extractor
+from hazmem import ui_theme as ui
+from hazmem import evidence_integrity as ei
+from hazmem import input_validation as iv
+from hazmem import audit_log
+from hazmem import auth
+from hazmem import admin_pages
+from hazmem import help_page
+from hazmem import assistant
 
 
 # ── SECTION 2: PATHS & FOLDER SETUP ──────────────────────────────────────────
@@ -57,7 +57,7 @@ ISO_PATH    = (
     if os.path.exists(os.path.join(MODEL_DIR, "isolation_forest.pkl"))
     else os.path.join(BASE_DIR, "isolation_forest.pkl")
 )
-OUTPUT_DIR  = os.environ.get("MEMTRIAGE_OUTPUT_DIR") or os.path.join(BASE_DIR, "outputs")
+OUTPUT_DIR  = os.environ.get("HAZMEM_OUTPUT_DIR") or os.path.join(BASE_DIR, "outputs")
 LOG_DIR     = os.path.join(BASE_DIR, "logs")
 SAMPLES_DIR = os.path.join(DATA_DIR, "test_samples")
 CASES_DIR   = os.path.join(OUTPUT_DIR, "cases")   # per-case evidence copies, CSVs, manifests
@@ -72,7 +72,7 @@ os.makedirs(SAMPLES_DIR, exist_ok=True)
 # Every prediction is written to a log file with timestamp
 # This is chain-of-custody — a record of every analysis ever run.
 # Each line is HMAC-chained to the previous one (see audit_log.py).
-AUDIT_LOG_PATH = os.environ.get("MEMTRIAGE_AUDIT_LOG") or os.path.join(LOG_DIR, "triage_audit.log")
+AUDIT_LOG_PATH = os.environ.get("HAZMEM_AUDIT_LOG") or os.path.join(LOG_DIR, "triage_audit.log")
 audit_log.setup(AUDIT_LOG_PATH)
 logger = logging.getLogger("triage")
 admin_pages.AUDIT_LOG_PATH = AUDIT_LOG_PATH
@@ -734,8 +734,12 @@ def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.
     story = []
 
     # ── Header ────────────────────────────────────────────────
-    story.append(Paragraph("MEMORY FORENSIC TRIAGE &amp; XAI INVESTIGATION REPORT", title_style))
-    story.append(Paragraph("Explainable AI Memory Forensics Framework &bull; Autonomous Telemetry Analysis &bull; Confidential", subtitle_style))
+    brand = Table([[RLImage(ui.LOGO_PNG, width=46, height=46),
+                    [Paragraph("HAZMEM &bull; MEMORY FORENSIC TRIAGE &amp; XAI INVESTIGATION REPORT", title_style),
+                     Paragraph("Explainable AI Memory Forensics &bull; Chain-of-Custody Verified &bull; Confidential",
+                               subtitle_style)]]], colWidths=[56, None])
+    brand.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(brand)
 
     # ── 1. Chain of custody ───────────────────────────────────
     story.append(Paragraph("1. Chain of Custody &amp; Evidence Metadata", h2_style))
@@ -2159,7 +2163,7 @@ def render_dashboard(state: dict):
 def triage_page():
     rf_found = os.path.exists(MODEL_PATH)
     ui.page_header(
-        "MemTriage", "XAI",
+        "Haz", "Mem",
         "Explainable AI triage for Windows memory forensics",
         [ui.pill("Models online" if rf_found else "Model missing", "good" if rf_found else "critical"),
          ui.pill("Chain of custody: SHA-256", "accent", dot=False)],
@@ -2445,7 +2449,7 @@ def render_user_panel(user: dict):
 
 
 def main():
-    st.set_page_config(page_title="MemTriage XAI · Memory Forensics", page_icon=":material/memory:", layout="wide")
+    st.set_page_config(page_title="HazMem · Memory Forensics", page_icon=ui.ICON_PNG, layout="wide")
     ui.inject_theme()
     ui.inject_background()
 
