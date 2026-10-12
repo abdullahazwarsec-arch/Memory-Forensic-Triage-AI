@@ -5,7 +5,7 @@
  * Green gas clouds drift behind them, a large faint biohazard symbol (the
  * logo's eyes) slowly turns, and a click releases a burst of spores.
  * Pauses in background tabs; draws one still frame when the user prefers
- * reduced motion. Colours match hazmem/ui_theme.py and the logo.
+ * reduced motion. Colours follow the light/dark theme and match the logo.
  */
 (() => {
   if (window.__mtBackground) return;          // Streamlit reruns re-insert this script
@@ -18,7 +18,17 @@
   document.body.prepend(canvas);
   const ctx = canvas.getContext("2d");
 
-  const SPORE = "74, 222, 128", LINK = "16, 185, 129", HOT = "163, 230, 53", GAS = "16, 185, 129";
+  // Colours per theme (html[data-theme] is set by theme.js); k scales the glow strength.
+  const PALETTES = {
+    dark:  { SPORE: "74, 222, 128", LINK: "16, 185, 129", HOT: "163, 230, 53", GAS: "16, 185, 129", GAS2: "5, 150, 105", k: 1, mark: 0.045 },
+    light: { SPORE: "5, 150, 105",  LINK: "4, 120, 87",   HOT: "77, 124, 15",  GAS: "16, 185, 129", GAS2: "45, 212, 191", k: 0.55, mark: 0.07 },
+  };
+  let SPORE, LINK, HOT, GAS, GAS2, K, MARK;
+  const usePalette = () => {
+    const pal = PALETTES[document.documentElement.dataset.theme === "light" ? "light" : "dark"];
+    ({ SPORE, LINK, HOT, GAS, GAS2, k: K, mark: MARK } = pal);
+  };
+  usePalette();
   const LINK_DIST = 115, MOUSE_DIST = 170, REPEL_DIST = 150;
 
   let W = 0, H = 0, spores = [], bursts = [], ripples = [], running = true, symbol = null;
@@ -40,9 +50,9 @@
     off.width = off.height = size;
     const c = off.getContext("2d"), u = size / 2.4, cx = size / 2, cy = size / 2;
     const at = (d, a) => [cx + d * u * Math.cos(a * Math.PI / 180), cy + d * u * Math.sin(a * Math.PI / 180)];
-    c.fillStyle = `rgb(${SPORE})`;
+    c.fillStyle = "rgb(74, 222, 128)";
     for (const a of [-90, 30, 150]) { const [x, y] = at(0.48, a); c.beginPath(); c.arc(x, y, 0.42 * u, 0, 7); c.fill(); }
-    c.strokeStyle = `rgb(${SPORE})`; c.lineWidth = 0.09 * u;
+    c.strokeStyle = "rgb(74, 222, 128)"; c.lineWidth = 0.09 * u;
     c.beginPath(); c.arc(cx, cy, 0.31 * u, 0, 7); c.stroke();
     c.globalCompositeOperation = "destination-out";
     for (const a of [-90, 30, 150]) { const [x, y] = at(0.64, a); c.beginPath(); c.arc(x, y, 0.30 * u, 0, 7); c.fill(); }
@@ -93,6 +103,7 @@
   }
 
   function draw(t) {
+    usePalette();
     ctx.clearRect(0, 0, W, H);
 
     // eased pointer + parallax offsets (far layers move less)
@@ -103,23 +114,23 @@
 
     // drifting gas clouds (shift against the mouse for depth)
     glow(W * (0.22 + 0.07 * Math.sin(t / 9000)) + ox * 1.6, H * (0.25 + 0.06 * Math.cos(t / 11000)) + oy * 1.6,
-         big * 0.42, GAS, 0.11);
+         big * 0.42, GAS, 0.11 * K);
     glow(W * (0.78 + 0.06 * Math.cos(t / 12000)) + ox * 1.2, H * (0.78 + 0.05 * Math.sin(t / 8000)) + oy * 1.2,
-         big * 0.38, "5, 150, 105", 0.08);
+         big * 0.38, GAS2, 0.08 * K);
     glow(W * (0.55 + 0.1 * Math.sin(t / 15000)) + ox * 2, H * (0.5 + 0.08 * Math.cos(t / 13000)) + oy * 2,
-         big * 0.3, HOT, 0.035);
+         big * 0.3, HOT, 0.035 * K);
 
     // faint biohazard symbol, slowly turning, with parallax
     if (symbol) {
       ctx.save();
-      ctx.globalAlpha = 0.045;
+      ctx.globalAlpha = MARK;
       ctx.translate(W * 0.62 + ox * 0.8, H * 0.52 + oy * 0.8);
       ctx.rotate(t / 60000);
       ctx.drawImage(symbol, -symbol.width / 2, -symbol.height / 2);
       ctx.restore();
     }
 
-    if (mouse.on) glow(mouse.x, mouse.y, 320, GAS, 0.16);
+    if (mouse.on) glow(mouse.x, mouse.y, 320, GAS, 0.16 * K);
 
     // spores: rise, wobble, avoid the cursor
     for (const s of spores) {

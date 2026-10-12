@@ -236,8 +236,13 @@ for _term, _meaning in help_page.GLOSSARY:
     _names = [_key] + ALIASES.get(_key, [])
     TOPICS.append((f"term:{_key}", [p for n in _names for p in (f"what is {n}", f"explain {n}", n)]
                    + [f"meaning of {_key}", f"what does {_key} mean"], f"**{_term}** — {_meaning}"))
+# Extra phrasings for some FAQ entries
+FAQ_ALIASES = {
+    "How do I switch between light and dark mode?": ["dark mode", "light mode", "change the theme",
+                                                     "make it brighter", "night mode", "appearance setting"],
+}
 for _q, _a in help_page.FAQ:
-    TOPICS.append((f"faq:{_q}", [_q.lower().rstrip("?.")], _a))
+    TOPICS.append((f"faq:{_q}", [_q.lower().rstrip("?.")] + FAQ_ALIASES.get(_q, []), _a))
 
 SUGGESTIONS = {
     "start":    ["How do I open a case?", "What is a memory dump?", "Try a sample", "What can you do?"],

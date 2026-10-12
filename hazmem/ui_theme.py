@@ -13,6 +13,7 @@ into code blocks.
 
 import os
 import re
+import json
 import math
 import base64
 import html as _html
@@ -21,39 +22,58 @@ import streamlit as st
 
 
 # ── Design tokens ─────────────────────────────────────────────────────────────
-BG          = "#070d0b"
-SURFACE     = "#0f1a16"
-SURFACE_2   = "#14221d"
-BORDER      = "#1c2b25"
-BORDER_HI   = "#28403a"
-TEXT        = "#e3f2ec"
-TEXT_2      = "#a9c1b8"
-MUTED       = "#7f978e"
-ACCENT      = "#10b981"     # emerald
-ACCENT_DEEP = "#059669"     # deep emerald (gradient end)
-ACCENT_SOFT = "#6ee7b7"     # mint, for text on dark (hashes, code)
-LIME        = "#a3e635"     # highlight
-INK         = "#03140d"     # text/glyphs on emerald surfaces
+# Every colour is a CSS variable with a dark and a light value (DARK / LIGHT
+# below). The active set follows Streamlit's theme: assets/background.js reads
+# the theme Streamlit applied and sets <html data-theme="light|dark">.
+DARK = {
+    "bg": "#070d0b", "surface": "#0f1a16", "surface-2": "#14221d", "border": "#1c2b25", "border-hi": "#28403a",
+    "text": "#e3f2ec", "text-2": "#a9c1b8", "muted": "#7f978e",
+    "accent": "#10b981", "accent-deep": "#059669", "accent-soft": "#6ee7b7", "lime": "#a3e635", "ink": "#03140d",
+    "good": "#2dd4bf", "warning": "#f5b83d", "critical": "#f87171",
+    "good-rgb": "45, 212, 191", "warning-rgb": "245, 184, 61", "critical-rgb": "248, 113, 113", "accent-rgb": "16, 185, 129",
+    "fill": "255, 255, 255", "fill-k": "1", "line": "255, 255, 255", "shade": "0, 0, 0", "shade-k": "1",
+    "input-bg": "#0b1512", "input-border": "#1f332c", "dashed": "#2c4a40", "scroll": "#24392f",
+    "tile-1": "#2c4a40", "tile-2": "#13221d", "gauge-1": "#11201b", "gauge-2": "#050a08",
+    "header-bg": "rgba(0, 0, 0, 0.72)", "sidebar-1": "rgba(7, 14, 12, 0.86)", "sidebar-2": "rgba(0, 0, 0, 0.9)",
+    "popover-bg": "rgba(11, 21, 18, 0.96)",
+}
+LIGHT = {
+    "bg": "#f3f8f5", "surface": "#ffffff", "surface-2": "#e9f2ed", "border": "#cfe0d7", "border-hi": "#b3cbbf",
+    "text": "#0f1f19", "text-2": "#2f4a3f", "muted": "#566e65",
+    "accent": "#059669", "accent-deep": "#047857", "accent-soft": "#047857", "lime": "#4d7c0f", "ink": "#03140d",
+    "good": "#0f766e", "warning": "#b45309", "critical": "#dc2626",
+    "good-rgb": "15, 118, 110", "warning-rgb": "180, 83, 9", "critical-rgb": "220, 38, 38", "accent-rgb": "5, 150, 105",
+    "fill": "255, 255, 255", "fill-k": "15", "line": "15, 31, 25", "shade": "15, 31, 25", "shade-k": "0.35",
+    "input-bg": "#ffffff", "input-border": "#c3d8cd", "dashed": "#9fbcae", "scroll": "#b3cbbf",
+    "tile-1": "#ffffff", "tile-2": "#e3eee8", "gauge-1": "#ffffff", "gauge-2": "#e9f2ed",
+    "header-bg": "rgba(243, 248, 245, 0.82)", "sidebar-1": "rgba(255, 255, 255, 0.82)",
+    "sidebar-2": "rgba(233, 242, 237, 0.92)", "popover-bg": "rgba(255, 255, 255, 0.97)",
+}
 
-# Status (always paired with an icon + label, never colour alone).
-# "Good" is teal, not green, so a benign/verified state never reads as the brand accent.
-GOOD     = "#2dd4bf"
-WARNING  = "#f5b83d"
-CRITICAL = "#f87171"
 
-# Chart diverging pair (CVD-safe, >=3:1 on the dark surface)
-TOWARD_MALWARE = "#e66767"
+def _css_vars(tokens: dict) -> str:
+    return " ".join(f"--{k}: {v};" for k, v in tokens.items())
+
+
+# Names used by the page code (inline styles) - they resolve per theme.
+BG, SURFACE, SURFACE_2 = "var(--bg)", "var(--surface)", "var(--surface-2)"
+BORDER, BORDER_HI = "var(--border)", "var(--border-hi)"
+TEXT, TEXT_2, MUTED = "var(--text)", "var(--text-2)", "var(--muted)"
+ACCENT, ACCENT_DEEP, ACCENT_SOFT, LIME, INK = "var(--accent)", "var(--accent-deep)", "var(--accent-soft)", "var(--lime)", "var(--ink)"
+GOOD, WARNING, CRITICAL = "var(--good)", "var(--warning)", "var(--critical)"
+
+# Charts are drawn by Vega (no CSS variables): mid-tone colours readable on both themes.
+CHART_TEXT, CHART_MUTED, CHART_GRID = "#6b8279", "#7d918a", "rgba(107, 130, 121, 0.28)"
+TOWARD_MALWARE = "#e66767"   # CVD-safe diverging pair, >=3:1 on both backgrounds
 TOWARD_BENIGN  = "#3987e5"
 
 TONES = {
-    "good":     (GOOD,     "rgba(45, 212, 191, 0.09)",  "rgba(45, 212, 191, 0.32)"),
-    "warning":  (WARNING,  "rgba(245, 184, 61, 0.10)",  "rgba(245, 184, 61, 0.36)"),
-    "critical": (CRITICAL, "rgba(248, 113, 113, 0.10)", "rgba(248, 113, 113, 0.40)"),
-    "accent":   (ACCENT,   "rgba(16, 185, 129, 0.10)",  "rgba(16, 185, 129, 0.40)"),
-    "neutral":  (TEXT_2,   "rgba(255, 255, 255, 0.05)", "rgba(255, 255, 255, 0.14)"),
+    tone: (f"var(--{tone})", f"rgba(var(--{tone}-rgb), 0.10)", f"rgba(var(--{tone}-rgb), 0.38)")
+    for tone in ("good", "warning", "critical", "accent")
 }
+TONES["neutral"] = ("var(--text-2)", "rgba(var(--line), 0.05)", "rgba(var(--line), 0.14)")
 
-GRADIENT = f"linear-gradient(180deg, #a7f3d0 0%, #6ee7b7 30%, #34d399 60%, {ACCENT_DEEP} 100%)"
+GRADIENT = "linear-gradient(180deg, #a7f3d0 0%, #6ee7b7 30%, #34d399 60%, #059669 100%)"
 
 
 def _squircle_mask() -> str:
@@ -108,18 +128,17 @@ def inject_theme():
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0&display=block');
 
 :root {{
-  --bg: {BG}; --surface: {SURFACE}; --surface-2: {SURFACE_2};
-  --border: {BORDER}; --border-hi: {BORDER_HI};
-  --text: {TEXT}; --text-2: {TEXT_2}; --muted: {MUTED};
-  --accent: {ACCENT}; --accent-deep: {ACCENT_DEEP}; --accent-soft: {ACCENT_SOFT}; --ink: {INK};
+  {_css_vars(DARK)}
   --squircle: {SQUIRCLE};
-  --good: {GOOD}; --warning: {WARNING}; --critical: {CRITICAL};
   --gradient: {GRADIENT};
-  --glass: rgba(255, 255, 255, 0.025); --glass-border: rgba(255, 255, 255, 0.08);
+  --glass: rgba(var(--fill), calc(0.025 * var(--fill-k))); --glass-border: rgba(var(--line), 0.09);
   --radius: 20px; --radius-sm: 14px;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
   --sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
 }}
+html[data-theme="light"] {{ {_css_vars(LIGHT)} color-scheme: light; }}
+html[data-theme="light"] .fx-logo-img {{ filter: drop-shadow(0 6px 12px rgba(15, 31, 25, 0.22)); }}
+html[data-theme="light"] .fx-kpi-value.mono, html[data-theme="light"] :not(pre) > code {{ font-weight: 600; }}
 
 /* ── Canvas: interactive background (assets/background.js draws on #mt-bg) ── */
 html, body {{ background: var(--bg) !important; }}
@@ -128,11 +147,12 @@ html, body {{ background: var(--bg) !important; }}
 }}
 .stApp {{ color: var(--text) !important; }}
 #mt-bg {{ position: fixed; inset: 0; z-index: -1; pointer-events: none; }}
-[data-testid="stElementContainer"]:has(#mt-bg-anchor) {{ display: none !important; }}
-::selection {{ background: var(--accent); color: #000; }}
-* {{ scrollbar-width: thin; scrollbar-color: #24392f transparent; }}
+[data-testid="stElementContainer"]:has(#mt-bg-anchor),
+[data-testid="stElementContainer"]:has(#mt-theme-anchor) {{ display: none !important; }}
+::selection {{ background: var(--accent); color: #fff; }}
+* {{ scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }}
 ::-webkit-scrollbar {{ width: 9px; height: 9px; }}
-::-webkit-scrollbar-thumb {{ background: #24392f; border-radius: 999px; }}
+::-webkit-scrollbar-thumb {{ background: var(--scroll); border-radius: 999px; }}
 ::-webkit-scrollbar-thumb:hover {{ background: var(--accent-deep); }}
 
 /* ── Typography ── */
@@ -155,7 +175,7 @@ code, pre, .mono {{ font-family: var(--mono) !important; }}
 /* ── macOS-style app icon tiles ── */
 .fx-mac {{
   display: inline-grid; flex: 0 0 auto; vertical-align: middle;
-  filter: drop-shadow(0 7px 12px rgba(0, 0, 0, 0.6)) drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 7px 12px rgba(var(--shade), calc(0.6 * var(--shade-k)))) drop-shadow(0 1px 1.5px rgba(var(--shade), calc(0.45 * var(--shade-k))));
   transition: transform .25s cubic-bezier(.2, .9, .3, 1.4);
 }}
 .fx-mac:hover {{ transform: translateY(-2px) scale(1.04); }}
@@ -168,7 +188,7 @@ code, pre, .mono {{ font-family: var(--mono) !important; }}
 }}
 .fx-mac-tile::before {{
   content: ""; position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.08) 46%, transparent 52%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(var(--line), 0.08) 46%, transparent 52%);
 }}
 .fx-mac-tile .fx-icon {{
   position: relative; font-size: calc(var(--s, 42px) * 0.56); color: var(--ink);
@@ -185,8 +205,8 @@ code, pre, .mono {{ font-family: var(--mono) !important; }}
   width: 26px !important; min-width: 26px !important; height: 26px !important; flex: 0 0 26px !important;
   font-size: 16px !important; line-height: 1 !important; overflow: hidden;
   border-radius: 8px; color: var(--accent) !important; margin-right: 0.2rem;
-  background: linear-gradient(180deg, #2c4a40 0%, #13221d 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 2px 6px rgba(0, 0, 0, 0.55);
+  background: linear-gradient(180deg, var(--tile-1) 0%, var(--tile-2) 100%);
+  box-shadow: inset 0 1px 0 rgba(var(--line), 0.16), 0 2px 6px rgba(var(--shade), calc(0.55 * var(--shade-k)));
 }}
 [data-testid="stTopNavLink"][aria-current="page"] [data-testid="stIconMaterial"] {{
   background: var(--gradient); color: var(--ink) !important;
@@ -197,15 +217,15 @@ code, pre, .mono {{ font-family: var(--mono) !important; }}
 
 /* ── Header bar & top navigation (pill links) ── */
 header[data-testid="stHeader"] {{
-  background: rgba(0, 0, 0, 0.72) !important; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--header-bg) !important; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(var(--line), 0.06);
 }}
 [data-testid="stTopNavLink"] {{
   border-radius: 999px !important; padding: 0.35rem 1rem !important; border: 1px solid transparent;
   transition: background .2s ease, border-color .2s ease, color .2s ease;
 }}
 [data-testid="stTopNavLink"] span {{ color: var(--text-2) !important; font-weight: 600 !important; }}
-[data-testid="stTopNavLink"]:hover {{ background: rgba(255, 255, 255, 0.05) !important; border-color: rgba(255, 255, 255, 0.10); }}
+[data-testid="stTopNavLink"]:hover {{ background: rgba(var(--fill), calc(0.05 * var(--fill-k))) !important; border-color: rgba(var(--line), 0.10); }}
 [data-testid="stTopNavLink"][aria-current="page"] {{
   background: rgba(16, 185, 129, 0.12) !important; border-color: rgba(16, 185, 129, 0.40);
 }}
@@ -213,9 +233,9 @@ header[data-testid="stHeader"] {{
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {{
-  background: linear-gradient(180deg, rgba(7, 14, 12, 0.86) 0%, rgba(0, 0, 0, 0.9) 100%) !important;
+  background: linear-gradient(180deg, var(--sidebar-1) 0%, var(--sidebar-2) 100%) !important;
   backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-right: 1px solid rgba(var(--line), 0.06) !important;
 }}
 [data-testid="stSidebar"] .block-container {{ padding-top: 1.5rem !important; }}
 
@@ -246,7 +266,7 @@ header[data-testid="stHeader"] {{
 }}
 .stButton > button:not([kind="primary"]), .stDownloadButton > button:not([kind="primary"]),
 [data-testid="stFormSubmitButton"] > button:not([kind="primaryFormSubmit"]) {{
-  background: rgba(255, 255, 255, 0.04) !important; border: 1px solid rgba(255, 255, 255, 0.12) !important; color: var(--text) !important;
+  background: rgba(var(--fill), calc(0.04 * var(--fill-k))) !important; border: 1px solid rgba(var(--line), 0.12) !important; color: var(--text) !important;
 }}
 .stButton > button:not([kind="primary"]):hover, .stDownloadButton > button:not([kind="primary"]):hover,
 [data-testid="stFormSubmitButton"] > button:not([kind="primaryFormSubmit"]):hover {{
@@ -263,16 +283,16 @@ header[data-testid="stHeader"] {{
 
 /* ── Inputs ── */
 div[data-baseweb="select"] > div, [data-testid="stTextInput"] input, [data-testid="stDateInput"] input {{
-  background-color: #0b1512 !important; border-color: #1f332c !important;
+  background-color: var(--input-bg) !important; border-color: var(--input-border) !important;
   border-radius: 12px !important; font-size: 1rem !important; min-height: 2.9rem;
 }}
 [data-testid="stTextInput"] > div > div {{ border-radius: 12px !important; }}
 [data-testid="stTextInput"] div:focus-within {{ border-color: var(--accent) !important; }}
-div[data-baseweb="popover"] ul[role="listbox"] {{ background: #0b1512 !important; border: 1px solid #1f332c !important; border-radius: 12px !important; }}
+div[data-baseweb="popover"] ul[role="listbox"] {{ background: var(--input-bg) !important; border: 1px solid var(--input-border) !important; border-radius: 12px !important; }}
 li[role="option"] {{ font-size: 0.97rem !important; }}
 li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(16, 185, 129, 0.12) !important; }}
 [data-testid="stFileUploader"] section {{
-  background: var(--glass) !important; border: 1.5px dashed #2c4a40 !important; border-radius: var(--radius) !important;
+  background: var(--glass) !important; border: 1.5px dashed var(--dashed) !important; border-radius: var(--radius) !important;
   transition: border-color .2s ease, background .2s ease;
 }}
 [data-testid="stFileUploader"] section:hover {{ border-color: var(--accent) !important; background: rgba(16, 185, 129, 0.04) !important; }}
@@ -280,7 +300,7 @@ li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(16, 185, 1
 /* ── Tabs: pill track ── */
 [data-testid="stTabs"] [role="tablist"] {{
   gap: 0.3rem; padding: 0.3rem; width: fit-content; max-width: 100%; overflow-x: auto;
-  background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.08) !important; border-radius: 999px;
+  background: rgba(var(--fill), calc(0.035 * var(--fill-k))); border: 1px solid rgba(var(--line), 0.08) !important; border-radius: 999px;
 }}
 [data-testid="stTabs"] [data-baseweb="tab-highlight"], [data-testid="stTabs"] [data-baseweb="tab-border"],
 [data-testid="stTabs"] [role="tab"] > div:not([data-testid]) {{ display: none !important; }}
@@ -289,7 +309,7 @@ li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(16, 185, 1
   transition: background .2s ease, box-shadow .2s ease;
 }}
 [data-testid="stTabs"] [role="tab"] p {{ font-size: 0.97rem !important; font-weight: 700 !important; color: var(--muted) !important; margin: 0 !important; }}
-[data-testid="stTabs"] [role="tab"]:hover {{ background: rgba(255, 255, 255, 0.05); }}
+[data-testid="stTabs"] [role="tab"]:hover {{ background: rgba(var(--fill), calc(0.05 * var(--fill-k))); }}
 [data-testid="stTabs"] [role="tab"]:hover p {{ color: var(--text) !important; }}
 [data-testid="stTabs"] [role="tab"][aria-selected="true"] {{ background: var(--gradient) !important; box-shadow: 0 6px 18px -8px rgba(16, 185, 129, 0.8); }}
 [data-testid="stTabs"] [role="tab"][aria-selected="true"] p {{ color: var(--ink) !important; }}
@@ -312,15 +332,15 @@ footer {{ visibility: hidden !important; }}
 
 /* ── Components ── */
 .fx-card {{
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  background: linear-gradient(180deg, rgba(var(--fill), calc(0.045 * var(--fill-k))), rgba(var(--fill), calc(0.015 * var(--fill-k))));
   border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 1.3rem 1.45rem;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 20px 40px -24px rgba(0, 0, 0, 0.9);
+  box-shadow: inset 0 1px 0 rgba(var(--fill), calc(0.04 * var(--fill-k))), 0 20px 40px -24px rgba(var(--shade), calc(0.9 * var(--shade-k)));
 }}
 .fx-header {{
   position: relative; overflow: hidden;
   display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
   padding: 1.5rem 1.7rem; margin-bottom: 1.3rem; border-radius: 24px;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.10), rgba(255, 255, 255, 0.02) 50%);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.10), rgba(var(--fill), calc(0.02 * var(--fill-k))) 50%);
   border: 1px solid rgba(16, 185, 129, 0.18);
 }}
 .fx-header::after {{
@@ -329,7 +349,7 @@ footer {{ visibility: hidden !important; }}
 }}
 .fx-brand {{ display: flex; align-items: center; gap: 1rem; position: relative; z-index: 1; }}
 .fx-logo-img {{
-  flex: 0 0 auto; display: block; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 18px rgba(74, 222, 128, 0.28));
+  flex: 0 0 auto; display: block; filter: drop-shadow(0 6px 14px rgba(var(--shade), calc(0.65 * var(--shade-k)))) drop-shadow(0 0 18px rgba(74, 222, 128, 0.28));
   transition: transform .3s cubic-bezier(.2, .9, .3, 1.4), filter .3s ease;
 }}
 .fx-logo-img:hover {{ transform: rotate(-6deg) scale(1.06); filter: drop-shadow(0 8px 16px rgba(0,0,0,.65)) drop-shadow(0 0 26px rgba(74,222,128,.55)); }}
@@ -353,7 +373,7 @@ footer {{ visibility: hidden !important; }}
 }}
 .fx-step-num {{
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
-  font-weight: 800; font-size: 0.92rem; border: 1px solid var(--border-hi); color: var(--muted); background: #0b1512;
+  font-weight: 800; font-size: 0.92rem; border: 1px solid var(--border-hi); color: var(--muted); background: var(--input-bg);
 }}
 .fx-step-num .fx-icon {{ font-size: 1.15rem; font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 20; }}
 .fx-step-label {{ font-weight: 700; font-size: 0.96rem; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; }}
@@ -362,8 +382,8 @@ footer {{ visibility: hidden !important; }}
 .fx-step.active {{ border-color: rgba(16, 185, 129, 0.5); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.06), 0 10px 30px -18px rgba(16, 185, 129, 0.8); }}
 .fx-step.active .fx-step-num {{ background: var(--gradient); border-color: transparent; color: var(--ink); }}
 .fx-step.active .fx-step-label {{ color: var(--text); }}
-.fx-step.blocked {{ border-color: rgba(255, 95, 95, 0.45); }}
-.fx-step.blocked .fx-step-num {{ background: rgba(255, 95, 95, 0.14); border-color: var(--critical); color: var(--critical); }}
+.fx-step.blocked {{ border-color: rgba(var(--critical-rgb), 0.45); }}
+.fx-step.blocked .fx-step-num {{ background: rgba(var(--critical-rgb), 0.14); border-color: var(--critical); color: var(--critical); }}
 
 .fx-section {{ display: flex; align-items: center; gap: 0.85rem; margin: 2.2rem 0 1rem 0; }}
 .fx-section-title {{ font-size: 1.5rem; font-weight: 800; color: var(--text); letter-spacing: -0.035em; line-height: 1.15; }}
@@ -372,7 +392,7 @@ footer {{ visibility: hidden !important; }}
 .fx-kpis {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.8rem; }}
 .fx-kpi {{
   position: relative; overflow: hidden; min-width: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
+  background: linear-gradient(180deg, rgba(var(--fill), calc(0.045 * var(--fill-k))), rgba(var(--fill), calc(0.012 * var(--fill-k))));
   border: 1px solid var(--glass-border); border-radius: 18px; padding: 1rem 1.15rem;
   transition: border-color .2s ease, transform .2s ease;
 }}
@@ -393,7 +413,7 @@ footer {{ visibility: hidden !important; }}
 .fx-verdict {{ display: grid; grid-template-columns: 220px 1fr; gap: 1.4rem; align-items: center; }}
 .fx-gauge {{ width: 192px; height: 192px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto; }}
 .fx-gauge-inner {{
-  width: 154px; height: 154px; border-radius: 50%; background: radial-gradient(circle at 50% 30%, #11201b, #050a08);
+  width: 154px; height: 154px; border-radius: 50%; background: radial-gradient(circle at 50% 30%, var(--gauge-1), var(--gauge-2));
   display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid var(--border);
 }}
 .fx-gauge-value {{ font-size: 2.35rem; font-weight: 800; letter-spacing: -0.05em; line-height: 1; }}
@@ -448,7 +468,7 @@ footer {{ visibility: hidden !important; }}
 .fx-guide {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.9rem; margin: 0.4rem 0 1rem; }}
 .fx-guide-card {{
   position: relative; padding: 1.2rem 1.2rem 1.1rem; border-radius: 20px; min-width: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
+  background: linear-gradient(180deg, rgba(var(--fill), calc(0.045 * var(--fill-k))), rgba(var(--fill), calc(0.012 * var(--fill-k))));
   border: 1px solid var(--glass-border); transition: transform .2s ease, border-color .2s ease;
 }}
 .fx-guide-card:hover {{ transform: translateY(-3px); border-color: rgba(16, 185, 129, 0.45); }}
@@ -470,7 +490,7 @@ footer {{ visibility: hidden !important; }}
 }}
 [data-testid="stPopoverBody"]:has(.fx-asst-head) {{
   width: min(440px, calc(100vw - 32px)) !important; max-width: none !important;
-  background: rgba(11, 21, 18, 0.96) !important; backdrop-filter: blur(16px);
+  background: var(--popover-bg) !important; backdrop-filter: blur(16px);
   border: 1px solid rgba(16, 185, 129, 0.35) !important; border-radius: 20px !important;
 }}
 [data-testid="stPopoverBody"]:has(.fx-asst-head) button {{ animation: none; }}
@@ -485,6 +505,11 @@ footer {{ visibility: hidden !important; }}
 [data-testid="stPopoverBody"] [data-testid="stChatMessage"] {{ background: var(--glass); border-radius: 14px; padding: 0.6rem 0.8rem; }}
 [data-testid="stPopoverBody"] [data-testid="stChatMessage"] p, [data-testid="stPopoverBody"] [data-testid="stChatMessage"] li {{ font-size: 0.93rem; }}
 @media (prefers-reduced-motion: reduce) {{ .st-key-assistant_fab button {{ animation: none !important; }} }}
+[class*="st-key-appearance_"] [data-testid="stButtonGroup"] button {{
+  min-width: 0 !important; min-height: 2.3rem !important; padding: 0 0.3rem !important; gap: 0.25rem !important;
+}}
+[class*="st-key-appearance_"] [data-testid="stButtonGroup"] button p {{ font-size: 0.78rem !important; letter-spacing: -0.01em; }}
+[class*="st-key-appearance_"] [data-testid="stButtonGroup"] button [data-testid="stIconMaterial"] {{ font-size: 1rem !important; margin-right: 0 !important; }}
 .fx-check {{ display: flex; align-items: center; gap: 0.6rem; font-size: 0.94rem; color: var(--text-2); padding: 0.3rem 0; }}
 
 @media (max-width: 760px) {{
@@ -505,11 +530,47 @@ footer {{ visibility: hidden !important; }}
 _BG_JS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "background.js")
 
 
+def _read_script(path: str) -> str:
+    """
+    Load a bundled script. Streamlit sanitises st.html with DOMPurify, which silently drops a
+    <script> whose text looks like markup - so refuse such text here, loudly.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        script = f.read()
+    if re.search(r"<[/A-Za-z!]", script):
+        raise ValueError(f"{os.path.basename(path)} contains tag-like text and would be stripped by the sanitiser")
+    return script
+
+
 def inject_background():
     """Interactive canvas background (runs once per browser tab; guarded inside the script)."""
-    with open(_BG_JS, "r", encoding="utf-8") as f:
-        script = f.read()
+    script = _read_script(_BG_JS)
     st.html(f'<span id="mt-bg-anchor"></span><script>{script}</script>', unsafe_allow_javascript=True)
+
+
+_THEME_JS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "theme.js")
+APPEARANCE = {"light": ":material/light_mode: Light", "dark": ":material/dark_mode: Dark",
+              "auto": ":material/contrast: Auto"}
+
+
+def inject_appearance(mode: str = None):
+    """
+    Keep the HazMem styles in step with Streamlit's light/dark theme and, when
+    mode is "light" / "dark" / "auto", switch Streamlit to that theme.
+    """
+    script = _read_script(_THEME_JS)
+    request = f"window.__HAZMEM_THEME_REQUEST = {json.dumps(mode)};" if mode in APPEARANCE else ""
+    st.html(f'<span id="mt-theme-anchor" data-mode="{esc(mode or "")}"></span><script>{request}{script}</script>',
+            unsafe_allow_javascript=True)
+
+
+def appearance_control(key: str, on_change=None, label: str = "Appearance", compact: bool = False):
+    """Light / Dark / Auto selector (Auto follows the computer's setting)."""
+    with st.container(key=f"appearance_{key}" if compact else None):
+        return st.segmented_control(label, list(APPEARANCE), format_func=APPEARANCE.get, key=key,
+                                    on_change=on_change, help="Auto follows your computer's light or dark setting.",
+                                    label_visibility="collapsed" if compact else "visible",
+                                    width="stretch" if compact else "content")
 
 
 # ── Components ────────────────────────────────────────────────────────────────

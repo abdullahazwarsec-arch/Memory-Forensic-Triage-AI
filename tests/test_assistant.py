@@ -39,6 +39,8 @@ CASES = [
     ("scan every snapshot at once", "scan_all"),
     ("whos the reciepent", "recipient"),
     ("how do i log out", "sign_out"),
+    ("how do i switch to dark mode", "faq:How do I switch between light and dark mode?"),
+    ("can i make it brighter", "faq:How do I switch between light and dark mode?"),
     ("whats the weather in london", "unknown"),
     ("best pizza recipe", "unknown"),
     ("who won the football match", "unknown"),

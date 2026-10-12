@@ -46,6 +46,9 @@ FAQ = [
     ("I forgot my password / my account is locked.",
      f"Accounts unlock automatically after {auth.LOCKOUT_MINUTES} minutes. An administrator can also unlock it or "
      "set a temporary password on the **Users** page."),
+    ("How do I switch between light and dark mode?",
+     "Use **Appearance** in the sidebar (or on the sign-in page): **Light**, **Dark**, or **Auto** to follow your "
+     "computer's setting. Your choice is saved to your account and applied every time you sign in."),
     ("Can I continue a case later?",
      "Yes. Open **Cases**, pick the case and press **Continue this case**. A new session is recorded for it."),
 ]

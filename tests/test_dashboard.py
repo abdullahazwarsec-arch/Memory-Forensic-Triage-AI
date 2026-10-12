@@ -126,3 +126,14 @@ def test_full_triage_run_seals_report(fresh_users):
     stages = [e["stage"] for e in chain.events]
     assert chain.is_intact and "Provenance" in stages and "Report" in stages
     assert chain.provenance["prepared_for"]["name"] == "DCI Test Recipient"
+
+
+def test_appearance_preference_is_saved(fresh_users):
+    auth = fresh_users
+    auth.create_user("bob", "Bob Analyst", "analyst", "Analyst2026Pass", "test", must_change_password=False)
+    auth.set_preference("bob", "theme", "light")
+    assert auth.get_user("bob")["preferences"]["theme"] == "light"
+    with pytest.raises(auth.AuthError):
+        auth.set_preference("bob", "theme", "neon")
+    at = sign_in(run_app(), "bob", "Analyst2026Pass")
+    assert at.session_state["appearance"] == "light"

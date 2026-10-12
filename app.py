@@ -556,15 +556,15 @@ def polarity_chart(labels, values, metrics, x_title: str):
 
     bars = alt.Chart(data).mark_bar(cornerRadiusEnd=4, size=20).encode(
         y=alt.Y("Indicator:N", sort=order, title=None,
-                axis=alt.Axis(labelLimit=340, labelFontSize=14, labelColor=ui.TEXT_2, ticks=False, domain=False,
+                axis=alt.Axis(labelLimit=340, labelFontSize=14, labelColor=ui.CHART_TEXT, ticks=False, domain=False,
                               labelPadding=10)),
         x=alt.X("Contribution:Q", title=x_title,
-                axis=alt.Axis(labelFontSize=13, titleFontSize=14, titleColor=ui.TEXT_2, labelColor=ui.MUTED,
-                              gridColor=ui.BORDER, domain=False, tickColor=ui.BORDER, format="+.1f")),
+                axis=alt.Axis(labelFontSize=13, titleFontSize=14, titleColor=ui.CHART_TEXT, labelColor=ui.CHART_MUTED,
+                              gridColor=ui.CHART_GRID, domain=False, tickColor=ui.CHART_GRID, format="+.1f")),
         color=alt.Color("Direction:N",
                         scale=alt.Scale(domain=["Toward malware", "Toward benign"],
                                         range=[ui.TOWARD_MALWARE, ui.TOWARD_BENIGN]),
-                        legend=alt.Legend(orient="top", title=None, labelFontSize=14, labelColor=ui.TEXT_2,
+                        legend=alt.Legend(orient="top", title=None, labelFontSize=14, labelColor=ui.CHART_TEXT,
                                           symbolType="square", symbolSize=180)),
         tooltip=[
             alt.Tooltip("Indicator:N"),
@@ -573,7 +573,7 @@ def polarity_chart(labels, values, metrics, x_title: str):
             alt.Tooltip("Direction:N"),
         ],
     )
-    zero = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(color=ui.MUTED, strokeWidth=1).encode(x="x:Q")
+    zero = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(color=ui.CHART_MUTED, strokeWidth=1).encode(x="x:Q")
     chart = (alt.layer(bars, zero)
              .properties(height=max(220, 38 * len(data) + 50))
              .configure(background="transparent")
@@ -2366,6 +2366,7 @@ def start_session(user: dict):
         "username": user["username"], "session_id": uuid.uuid4().hex[:8].upper(),
         "login_ts": time.time(), "last_seen": time.time(), "login_local": ei.local_timestamp(),
     }
+    st.session_state["appearance"] = (user.get("preferences") or {}).get("theme", "auto")
     auth.audit("LOGIN_SUCCESS", user["username"], role=user["role"],
                session=st.session_state["auth"]["session_id"], client=admin_pages.client_ip())
 
@@ -2432,6 +2433,17 @@ def assistant_context(user: dict) -> dict:
     return ctx
 
 
+def save_appearance():
+    """Remember the chosen Light / Dark / Auto mode on the account (re-select if it was toggled off)."""
+    user = st.session_state.get("auth_user") or {}
+    saved = (user.get("preferences") or {}).get("theme", "auto")
+    choice = st.session_state.get("appearance")
+    if choice is None:                      # clicking the active option deselects it - keep the saved mode
+        st.session_state["appearance"] = saved
+    elif choice != saved and user:
+        auth.set_preference(user["username"], "theme", choice)
+
+
 def render_user_panel(user: dict):
     with st.sidebar:
         ui.sidebar_brand()
@@ -2443,6 +2455,8 @@ def render_user_panel(user: dict):
                        f'{ui.pill(admin_pages.ROLE_LABELS[user["role"]], "accent" if user["role"] == "admin" else "neutral")}</div>'
                        f'<div class="fx-side-row"><span>Since</span><span style="font-size:0.85rem;">'
                        f'{ui.esc(sess["login_local"][11:16])}</span></div>')
+        ui.render_html('<div class="fx-side-label">Appearance</div>')
+        ui.appearance_control("appearance", on_change=save_appearance, compact=True)
         if st.button("Sign out", icon=":material/logout:", width="stretch", key="sign_out"):
             end_session("LOGOUT", "You have been signed out.")
             st.rerun()
@@ -2452,6 +2466,8 @@ def main():
     st.set_page_config(page_title="HazMem · Memory Forensics", page_icon=ui.ICON_PNG, layout="wide")
     ui.inject_theme()
     ui.inject_background()
+    signed_in = "auth" in st.session_state
+    ui.inject_appearance(st.session_state.get("appearance" if signed_in else "appearance_login"))
 
     try:
         if not auth.has_users():

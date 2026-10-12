@@ -106,6 +106,7 @@ def render_login():
             submitted = st.form_submit_button("Sign in", type="primary", width="stretch", icon=":material/login:")
         st.caption(f"Accounts lock for {auth.LOCKOUT_MINUTES} minutes after {auth.MAX_FAILED} failed attempts. "
                    "All sign-ins are recorded in the audit log.")
+        ui.appearance_control("appearance_login")
         if submitted:
             user = auth.authenticate(username, password, client=client_ip())
             if user:

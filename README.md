@@ -59,7 +59,7 @@ that: a skull in a respirator with biohazard eyes.
 | 🧾 **Provenance** | Where the evidence came from (device, custodian, location, collector, time, tool) and who it is prepared for (recipient, purpose, reference) — sealed into the ledger and the report. |
 | 📄 **Sealed reports** | PDF dossier with verdict, explanations, provenance, response actions and the full custody ledger; its SHA-256 is recorded in the ledger, the audit log and a `.sha256` sidecar. |
 | 🔐 **Accounts & audit** | Sign-in with roles (Administrator / Analyst), lockout, idle timeout and an **HMAC-chained, tamper-evident audit log** with an Audit log page for administrators. |
-| 🧭 **Usability** | Guided start, Cases page to reopen past work, Help page with glossary & FAQ, and an **offline help assistant** that explains your result. Toxic-green theme with an interactive background (rising spores, gas clouds and a biohazard watermark that react to the mouse). |
+| 🧭 **Usability** | Guided start, Cases page to reopen past work, Help page with glossary & FAQ, and an **offline help assistant** that explains your result. **Light, Dark and Auto** modes (saved per account) and a toxic-green theme with an interactive background (rising spores, gas clouds and a biohazard watermark that react to the mouse). |
 
 ## Screenshots
 
@@ -70,8 +70,8 @@ that: a skull in a respirator with biohazard eyes.
 | <img src="docs/images/screenshots/04_explainability.png" width="440"> | <img src="docs/images/screenshots/05_provenance.png" width="440"> |
 | **Cases** | **Audit log (administrators)** |
 | <img src="docs/images/screenshots/06_cases.png" width="440"> | <img src="docs/images/screenshots/07_audit_log.png" width="440"> |
-| **Offline help assistant** | |
-| <img src="docs/images/screenshots/08_assistant.png" width="440"> | |
+| **Offline help assistant** | **Light mode** |
+| <img src="docs/images/screenshots/08_assistant.png" width="440"> | <img src="docs/images/screenshots/09_light_mode.png" width="440"> |
 
 ## How it works
 
@@ -141,6 +141,9 @@ Open <http://localhost:8501>. **On the first start you create the administrator 
 **Risk tiers:** **Normal** < 40 % · **Suspicious** 40–75 % · **High risk** ≥ 75 %. The **Assistant** button (bottom-right) answers
 questions offline — try *“explain my result”* or *“what should I do next?”*.
 
+**Appearance:** choose **Light**, **Dark** or **Auto** (follows your computer) in the sidebar or on the sign-in page. It switches
+instantly — Streamlit's own widgets and tables included — and is saved to your account.
+
 ## Project structure
 
 ```text
@@ -160,8 +163,8 @@ Memory-Forensic-Triage-AI/
 │   ├── admin_pages.py             # Sign-in, first-run setup, Audit log, Users, My account pages
 │   ├── help_page.py               # Help & glossary page
 │   ├── assistant.py               # Offline help assistant
-│   ├── ui_theme.py                # Toxic-green theme and UI components
-│   └── assets/                    # background.js (interactive canvas), hazmem_logo.svg / .png (logo, favicon)
+│   ├── ui_theme.py                # Light/dark design tokens, toxic-green theme and UI components
+│   └── assets/                    # background.js (interactive canvas), theme.js (light/dark), hazmem_logo.svg / .png
 │
 ├── scripts/
 │   ├── training/                  # train_model.py, train_multiclass.py
@@ -173,7 +176,7 @@ Memory-Forensic-Triage-AI/
 │
 ├── models/                        # Trained models + model_hashes.json (pinned SHA-256)
 ├── data/                          # Sample profiles and simulated scenarios (dataset CSV not committed)
-├── tests/                         # pytest suite (79 tests)
+├── tests/                         # pytest suite (82 tests)
 ├── docs/                          # Viva guide, commands runbook, figures, screenshots, results
 │
 ├── outputs/                       # Generated locally: cases, extractions, sealed reports   (git-ignored)
@@ -275,7 +278,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-**79 tests** (~35 s) covering the custody ledger and forgery detection, model pinning, intake and feature gates, audit-log
+**82 tests** (about 1–2 minutes) covering the custody ledger and forgery detection, model pinning, intake and feature gates, audit-log
 tampering, duplicate writers and multi-process writes, archiving, the assistant's topic matching, and end-to-end dashboard
 flows (first-run setup, sign-in, lockout, idle timeout, revocation, a sealed triage run). Tests run against a throw-away
 key, account store, audit log and output folder — real evidence is never touched.
@@ -284,7 +287,7 @@ key, account store, audit log and output folder — real evidence is never touch
 
 | Setting | Purpose |
 |---|---|
-| `.streamlit/config.toml` | Theme, `localhost` binding, upload limit (8 GB) |
+| `.streamlit/config.toml` | Light and dark palettes, `localhost` binding, upload limit (8 GB) |
 | `FORENSICS_LEDGER_KEY` | Ledger HMAC key as 64+ hex characters (instead of `keys/ledger_hmac.key`) |
 | `HAZMEM_USERS_FILE` | Alternative account-store location |
 | `HAZMEM_AUDIT_LOG` | Alternative audit-log location |

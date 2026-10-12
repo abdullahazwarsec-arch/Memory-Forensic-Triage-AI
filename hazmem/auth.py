@@ -291,5 +291,20 @@ def unlock(username: str, by: str):
                   lambda rec, _: rec.update(failed_attempts=0, locked_until=None))
 
 
+PREFERENCES = {"theme": ("light", "dark", "auto")}
+
+
+def set_preference(username: str, key: str, value: str):
+    """Store a harmless per-user display preference (validated against PREFERENCES)."""
+    if value not in PREFERENCES.get(key, ()):
+        raise AuthError(f"Invalid value for preference '{key}'.")
+    with _lock:
+        users = _load()
+        if username not in users:
+            raise AuthError(f"User '{username}' does not exist.")
+        users[username].setdefault("preferences", {})[key] = value
+        _save(users)
+
+
 def session_expired(last_seen: float) -> bool:
     return time.time() - last_seen > IDLE_TIMEOUT_MIN * 60
