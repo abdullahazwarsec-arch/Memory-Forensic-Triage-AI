@@ -20,6 +20,7 @@ Verify an exported manifest from the command line:
 
 import os
 import io
+import re
 import sys
 import json
 import hmac
@@ -49,33 +50,58 @@ MODEL_HASHES_PATH = os.path.join(BASE_DIR, "models", "model_hashes.json")
 
 
 # ── Hashing primitives ────────────────────────────────────────────────────────
-def hash_file(path: str) -> dict:
-    """Stream a file from disk and return its SHA-256, MD5 and size."""
-    sha256, md5, size = hashlib.sha256(), hashlib.md5(), 0
-    with open(path, "rb") as f:
-        while True:
-            chunk = f.read(CHUNK_SIZE)
-            if not chunk:
-                break
-            sha256.update(chunk)
-            md5.update(chunk)
-            size += len(chunk)
-    return {"sha256": sha256.hexdigest(), "md5": md5.hexdigest(), "size": size}
-
-
-def hash_stream(stream) -> dict:
-    """Hash a binary file-like object (e.g. a Streamlit upload) from its start."""
-    sha256, md5, size = hashlib.sha256(), hashlib.md5(), 0
-    stream.seek(0)
+def _digest(read, total: int = None, progress=None) -> dict:
+    """SHA-256 + SHA-1 + MD5 of a byte source; progress(done_bytes, total_bytes) is called as it goes."""
+    sha256, sha1, md5, size = hashlib.sha256(), hashlib.sha1(), hashlib.md5(), 0
     while True:
-        chunk = stream.read(CHUNK_SIZE)
+        chunk = read(CHUNK_SIZE)
         if not chunk:
             break
         sha256.update(chunk)
+        sha1.update(chunk)
         md5.update(chunk)
         size += len(chunk)
+        if progress:
+            progress(size, total or size)
+    return {"sha256": sha256.hexdigest(), "sha1": sha1.hexdigest(), "md5": md5.hexdigest(), "size": size}
+
+
+def hash_file(path: str, progress=None) -> dict:
+    """Stream a file from disk and return its SHA-256, SHA-1, MD5 and size."""
+    with open(path, "rb") as f:
+        return _digest(f.read, os.path.getsize(path), progress)
+
+
+def hash_stream(stream, progress=None) -> dict:
+    """Hash a binary file-like object (e.g. a Streamlit upload) from its start."""
+    stream.seek(0, os.SEEK_END)
+    total = stream.tell()
     stream.seek(0)
-    return {"sha256": sha256.hexdigest(), "md5": md5.hexdigest(), "size": size}
+    result = _digest(stream.read, total, progress)
+    stream.seek(0)
+    return result
+
+
+HASH_ALGORITHMS = {32: "md5", 40: "sha1", 64: "sha256"}
+
+
+def detect_algorithm(digest: str):
+    """'md5' / 'sha1' / 'sha256' from a hex digest's length, or None if it is not a valid digest."""
+    digest = (digest or "").strip().lower()
+    return HASH_ALGORITHMS.get(len(digest)) if re.fullmatch(r"[0-9a-f]+", digest) else None
+
+
+def parse_hash_text(text: str) -> list:
+    """
+    Extract (digest, filename) pairs from pasted text or a sidecar file
+    (sha256sum / md5sum / certutil / tool-log formats).
+    """
+    found = []
+    for line in (text or "").splitlines():
+        for m in re.finditer(r"(?<![0-9a-fA-F])([0-9a-fA-F]{64}|[0-9a-fA-F]{40}|[0-9a-fA-F]{32})(?![0-9a-fA-F])", line):
+            rest = line[m.end():].strip().lstrip("*").strip()
+            found.append((m.group(1).lower(), rest or None))
+    return found
 
 
 def hash_bytes(data: bytes) -> dict:
@@ -321,9 +347,15 @@ def verify_manifest(path: str, key: bytes = None) -> dict:
     Independently re-verify an exported custody manifest: recompute every HMAC
     link from the events themselves (the stored "integrity" field is not trusted).
     """
-    key = key or ledger_key()
     with open(path, "r", encoding="utf-8") as f:
         manifest = json.load(f)
+    return dict(verify_manifest_data(manifest, key), manifest=path)
+
+
+def verify_manifest_data(manifest: dict, key: bytes = None) -> dict:
+    """verify_manifest() for an already-loaded manifest (e.g. an upload)."""
+    key = key or ledger_key()
+    path = "(uploaded)"
     events = manifest.get("events", [])
     problems, prev = [], GENESIS_LINK
     if manifest.get("link_algorithm") != LINK_ALGORITHM:

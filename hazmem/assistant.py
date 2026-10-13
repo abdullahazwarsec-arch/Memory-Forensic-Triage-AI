@@ -225,7 +225,7 @@ TOPICS = [
 ALIASES = {
     "zero-day anomaly": ["isolation forest", "anomaly detection", "unknown threat detector", "zero day"],
     "malware score": ["random forest", "confidence score", "probability of malware"],
-    "hash (sha-256 / md5)": ["sha256", "md5", "fingerprint", "checksum", "hash"],
+    "hash (sha-256 / sha-1 / md5)": ["sha256", "sha1", "md5", "fingerprint", "checksum", "hash"],
     "memory dump": ["memory image", "ram capture", "raw image"],
     "volatility": ["volatility 3", "volatility framework"],
     "feature": ["features", "memory features", "the 55 features"],
@@ -238,6 +238,11 @@ for _term, _meaning in help_page.GLOSSARY:
                    + [f"meaning of {_key}", f"what does {_key} mean"], f"**{_term}** — {_meaning}"))
 # Extra phrasings for some FAQ entries
 FAQ_ALIASES = {
+    "How do I check that a file is the right one?": ["verify a hash", "check the hash of my csv", "hash checker",
+                                                     "is my csv correct", "compare hash", "verify memory image hash",
+                                                     "check csv was converted correctly"],
+    "How long will an analysis take?": ["how long will it take", "estimated time", "time remaining",
+                                        "how long does extraction take", "eta"],
     "How do I switch between light and dark mode?": ["dark mode", "light mode", "change the theme",
                                                      "make it brighter", "night mode", "appearance setting"],
 }

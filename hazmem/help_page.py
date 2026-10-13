@@ -21,7 +21,7 @@ GLOSSARY = [
                          "trained on — useful for new, unknown threats."),
     ("SHAP", "Explains the verdict by showing how much each feature pushed the score towards malware or benign."),
     ("LIME", "An independent second explanation: simple rules learned around this one snapshot."),
-    ("Hash (SHA-256 / MD5)", "A fingerprint of a file. Change one byte and the fingerprint changes completely, so "
+    ("Hash (SHA-256 / SHA-1 / MD5)", "A fingerprint of a file. Change one byte and the fingerprint changes completely, so "
                              "matching hashes prove a file is unchanged."),
     ("Chain of custody", "The record of who handled the evidence, when, and proof it was not altered. Here every "
                          "step re-checks the hash and is written to a tamper-evident ledger."),
@@ -46,6 +46,13 @@ FAQ = [
     ("I forgot my password / my account is locked.",
      f"Accounts unlock automatically after {auth.LOCKOUT_MINUTES} minutes. An administrator can also unlock it or "
      "set a temporary password on the **Users** page."),
+    ("How do I check that a file is the right one?",
+     "Open **Hash checker**. Add the memory image, raw dump or CSV (or its path for large dumps) and paste the "
+     "expected SHA-256, SHA-1 or MD5 — or upload the .sha256 file / tool log. A **MATCH** proves the file is "
+     "bit-for-bit identical. The **Verify dump → CSV conversion** tab proves a CSV came unchanged from a memory image."),
+    ("How long will an analysis take?",
+     "An estimate is shown before you start (memory-dump extraction is the slow part: roughly 2–3 minutes per GB), "
+     "and a countdown runs on the progress bar. Estimates learn from previous runs on this computer."),
     ("How do I switch between light and dark mode?",
      "Use **Appearance** in the sidebar (or on the sign-in page): **Light**, **Dark**, or **Auto** to follow your "
      "computer's setting. Your choice is saved to your account and applied every time you sign in."),

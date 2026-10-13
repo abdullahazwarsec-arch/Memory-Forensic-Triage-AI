@@ -57,6 +57,8 @@ that: a skull in a respirator with biohazard eyes.
 | 🔍 **Explainability** | **SHAP** global drivers and **LIME** local rules as interactive charts and plain-English driver cards — *why* the model decided. |
 | 🔗 **Chain of custody** | SHA-256 + MD5 at every stage, an **HMAC-keyed custody ledger**, write-protected working copies, and verification of the hash reported by the acquisition tool. Analysis is **blocked** on any mismatch. |
 | 🧾 **Provenance** | Where the evidence came from (device, custodian, location, collector, time, tool) and who it is prepared for (recipient, purpose, reference) — sealed into the ledger and the report. |
+| #️⃣ **Hash checker** | Verify any memory image, raw dump or CSV against an expected SHA-256 / SHA-1 / MD5 (pasted, a `.sha256` file or a tool log), and prove a CSV came unchanged from a memory image: hash **before conversion = after conversion**, and the CSV equals the one recorded at creation (optionally confirmed by the HMAC-sealed custody manifest). |
+| ⏱️ **Time estimates** | Estimated time before every extraction and analysis, and a live *“about N left”* countdown that learns this machine's speed. |
 | 📄 **Sealed reports** | PDF dossier with verdict, explanations, provenance, response actions and the full custody ledger; its SHA-256 is recorded in the ledger, the audit log and a `.sha256` sidecar. |
 | 🔐 **Accounts & audit** | Sign-in with roles (Administrator / Analyst), lockout, idle timeout and an **HMAC-chained, tamper-evident audit log** with an Audit log page for administrators. |
 | 🧭 **Usability** | Guided start, Cases page to reopen past work, Help page with glossary & FAQ, and an **offline help assistant** that explains your result. **Light, Dark and Auto** modes (saved per account) and a toxic-green theme with an interactive background (rising spores, gas clouds and a biohazard watermark that react to the mouse). |
@@ -72,6 +74,8 @@ that: a skull in a respirator with biohazard eyes.
 | <img src="docs/images/screenshots/06_cases.png" width="440"> | <img src="docs/images/screenshots/07_audit_log.png" width="440"> |
 | **Offline help assistant** | **Light mode** |
 | <img src="docs/images/screenshots/08_assistant.png" width="440"> | <img src="docs/images/screenshots/09_light_mode.png" width="440"> |
+| **Hash checker** | |
+| <img src="docs/images/screenshots/10_hash_checker.png" width="440"> | |
 
 ## How it works
 
@@ -133,6 +137,7 @@ Open <http://localhost:8501>. **On the first start you create the administrator 
 |---|---|---|
 | **Triage** | everyone | Open a case → record the evidence origin → load a sample, CSV or memory dump → *Analyse snapshot* → read the verdict, explanations, provenance and custody ledger → download the sealed report |
 | **Cases** | everyone | Search all cases, re-verify each evidence item, download sealed reports, *Continue this case* |
+| **Hash checker** | everyone | *Verify a file* against an expected hash · *Verify dump → CSV conversion* · how to get a hash with `certutil` / `Get-FileHash` / `sha256sum` |
 | **Audit log** | administrators | Sign-ins & sign-outs, failed attempts, lockouts, account changes and every recorded event — with integrity status, filters and CSV export |
 | **Users** | administrators | Create accounts, disable/enable, unlock, change roles, reset passwords |
 | **My account** | everyone | Change password, see your own sign-in history |
@@ -158,6 +163,8 @@ Memory-Forensic-Triage-AI/
 │   ├── evidence_integrity.py      # Hashing, HMAC custody ledger, manifest verifier, model hash pinning
 │   ├── audit_log.py               # HMAC-chained audit log: writer, verifier, parser, archive CLI
 │   ├── input_validation.py        # Intake checks (size, CSV, memory-image signatures) + 55-feature gate
+│   ├── hash_checker.py            # Hash checker page: file verification and dump → CSV conversion proof
+│   ├── timing.py                  # Time estimates and live countdowns (learns from previous runs)
 │   ├── memdump_extractor.py       # Volatility 3 dump → 55-feature CSV (also a CLI)
 │   ├── auth.py                    # Accounts: PBKDF2 passwords, roles, lockout, sealed account store
 │   ├── admin_pages.py             # Sign-in, first-run setup, Audit log, Users, My account pages
@@ -176,7 +183,7 @@ Memory-Forensic-Triage-AI/
 │
 ├── models/                        # Trained models + model_hashes.json (pinned SHA-256)
 ├── data/                          # Sample profiles and simulated scenarios (dataset CSV not committed)
-├── tests/                         # pytest suite (82 tests)
+├── tests/                         # pytest suite (102 tests)
 ├── docs/                          # Viva guide, commands runbook, figures, screenshots, results
 │
 ├── outputs/                       # Generated locally: cases, extractions, sealed reports   (git-ignored)
@@ -191,10 +198,10 @@ Every artefact is fingerprinted with SHA-256 and MD5 and re-verified at each sta
 | Stage | What is verified |
 |---|---|
 | Acquisition | Evidence hashed on arrival — the baseline |
-| Acquisition verification | Optional hash reported by the acquisition tool compared with the computed hash |
+| Acquisition verification | Optional expected hash (SHA-256, SHA-1 or MD5 from the acquisition tool or a `.sha256` file) compared with the computed hash — for dumps **and** CSVs |
 | Provenance | Origin and recipient sealed into the ledger |
 | Working copy | Uploads written to a write-protected copy and re-hashed |
-| Pre-/post-extraction | Memory dump hashed immediately before and after Volatility |
+| Pre-/post-extraction | Memory dump hashed immediately before and after Volatility — shown side by side after extraction, with the CSV, its `.sha256` and the extraction report to download |
 | Derived data | Feature CSV hashed and linked to the dump's hash |
 | Input validation | Feature check result recorded (and any analyst acknowledgement) |
 | Pre-analysis / analysis input | Evidence re-hashed; the exact feature vector sent to the model matches the verified file |
@@ -278,7 +285,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-**82 tests** (about 1–2 minutes) covering the custody ledger and forgery detection, model pinning, intake and feature gates, audit-log
+**102 tests** (about 1–2 minutes) covering the custody ledger and forgery detection, model pinning, hashing and the hash checker (including the dump → CSV chain), time estimates, intake and feature gates, audit-log
 tampering, duplicate writers and multi-process writes, archiving, the assistant's topic matching, and end-to-end dashboard
 flows (first-run setup, sign-in, lockout, idle timeout, revocation, a sealed triage run). Tests run against a throw-away
 key, account store, audit log and output folder — real evidence is never touched.

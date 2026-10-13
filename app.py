@@ -39,6 +39,8 @@ from hazmem import auth
 from hazmem import admin_pages
 from hazmem import help_page
 from hazmem import assistant
+from hazmem import hash_checker
+from hazmem import timing
 
 
 # ── SECTION 2: PATHS & FOLDER SETUP ──────────────────────────────────────────
@@ -76,6 +78,7 @@ AUDIT_LOG_PATH = os.environ.get("HAZMEM_AUDIT_LOG") or os.path.join(LOG_DIR, "tr
 audit_log.setup(AUDIT_LOG_PATH)
 logger = logging.getLogger("triage")
 admin_pages.AUDIT_LOG_PATH = AUDIT_LOG_PATH
+hash_checker.OUTPUT_DIR = OUTPUT_DIR
 
 
 # ── SECTION 4: FORENSIC FEATURE DICTIONARY & HUMAN TRANSLATOR ────────────────
@@ -1215,8 +1218,9 @@ def record_provenance(chain, origin: dict, recipient: dict):
     reported = origin.get("reported_hash", "")
     if reported:
         ev = chain.baseline("evidence")
-        algo = "SHA-256" if len(reported) == 64 else "MD5"
-        computed = ev.get("sha256" if algo == "SHA-256" else "md5", "")
+        key = ei.detect_algorithm(reported)
+        algo = {"sha256": "SHA-256", "sha1": "SHA-1", "md5": "MD5"}[key]
+        computed = ev.get(key, "")
         match = hmac.compare_digest(reported, computed)
         chain.record("Acquisition Verification",
                      f"{algo} reported by the acquisition tool compared with the hash computed on arrival",
@@ -1286,6 +1290,39 @@ def ingest_csv_evidence(key: str, name: str, kind: str, hashes: dict,
                               "csv_role": "evidence"})
 
 
+def timing_stats() -> timing.Timings:
+    """Per-machine timing history (outputs/timing_stats.json) used for time estimates."""
+    return timing.Timings(os.path.join(OUTPUT_DIR, "timing_stats.json"))
+
+
+def render_hash_verification(report: dict, ctx: dict):
+    """Dump hash before vs after conversion, and the derived CSV hash - with the files to re-verify later."""
+    integ = report.get("integrity", {})
+    pre, post, csv = integ.get("pre_extraction", {}), integ.get("post_extraction", {}), integ.get("derived_csv", {})
+    same = bool(pre) and pre.get("sha256") == post.get("sha256")
+    ui.render_html(
+        '<div class="fx-card" style="margin:0.6rem 0 0.8rem;">'
+        f'<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">'
+        f'{ui.pill("Dump unchanged by conversion" if same else "DUMP CHANGED DURING CONVERSION", "good" if same else "critical")}'
+        f'{ui.pill("CSV fingerprint recorded", "accent")}</div>'
+        + ui.hash_line("1 · Memory image SHA-256 — before conversion", pre.get("sha256", "—"))
+        + ui.hash_line("2 · Memory image SHA-256 — after conversion (must equal 1)", post.get("sha256", "—"))
+        + ui.hash_line(f"3 · Derived CSV SHA-256 — {csv.get('file', '')}", csv.get("sha256", "—"))
+        + '</div>')
+    st.caption("Keep the CSV together with its .sha256 file and the extraction report: the **Hash checker** page can "
+               "later prove the CSV is exactly the one produced from this memory image.")
+    folder = os.path.dirname(ctx["csv_path"])
+    c1, c2, c3 = st.columns(3)
+    for col, (label, path, mime) in zip((c1, c2, c3), [
+            ("Feature CSV", ctx["csv_path"], "text/csv"),
+            ("CSV .sha256", f"{ctx['csv_path']}.sha256", "text/plain"),
+            ("Extraction report", os.path.join(folder, "extraction_report.json"), "application/json")]):
+        if os.path.isfile(path):
+            with open(path, "rb") as f:
+                col.download_button(label, f.read(), file_name=os.path.basename(path), mime=mime,
+                                    icon=":material/download:", width="stretch", key=f"dl_{label}_{ctx['key']}")
+
+
 def reject_intake(key: str, name: str, error: Exception):
     """Show and audit-log an intake rejection (logged once per file, despite Streamlit reruns)."""
     logged = st.session_state.setdefault("rejected_intake", set())
@@ -1347,39 +1384,52 @@ def render_memory_dump_ingestion():
 
     ctx = st.session_state.get("cases", {}).get(dump_key)
     if ctx is None:
+        tm = timing_stats()
+        acquire_s = tm.hash_seconds(dump_size) * (2 if uploaded_dump is not None else 1)   # hash (+ copy)
+        extract_s = tm.extraction_seconds(dump_size)
+        estimate = acquire_s + extract_s
         st.info(f"**{dump_name}** passed intake checks ({dump_format}, {ei.format_size(dump_size)}). "
-                f"Extraction runs 9 Volatility plugins and can take a few minutes.",
-                icon=":material/memory:")
+                f"**Estimated time: {timing.approx(estimate)}** — fingerprinting "
+                f"{timing.approx(acquire_s)}, 9 Volatility plugins {timing.approx(extract_s)}. "
+                "The first analysis of a new Windows version takes longer (symbol download).",
+                icon=":material/timer:")
         if not st.button("Extract features", type="primary", icon=":material/memory:"):
             return None
 
-        progress_bar = st.progress(0.0, text="Computing acquisition hash of memory image (SHA-256 + MD5)...")
+        eta = timing.ProgressETA(estimate, "Computing acquisition hash of memory image (SHA-256 + SHA-1 + MD5)...")
+        acquire_w = acquire_s / max(estimate, 1)
+        hash_progress = lambda done, total: eta.update(acquire_w * 0.5 * done / max(total, 1),
+                                                       f"Fingerprinting memory image... {done * 100 // max(total, 1)}%")
         try:
+            t_acquire = time.time()
             if uploaded_dump is not None:
-                chain = open_case(dump_name, "memory-dump", ei.hash_stream(uploaded_dump),
+                chain = open_case(dump_name, "memory-dump", ei.hash_stream(uploaded_dump, progress=hash_progress),
                                   "Memory image received via dashboard upload",
                                   details=f"Hash computed over the exact bytes received from the analyst | "
                                           f"Intake check: {dump_format}")
-                progress_bar.progress(0.02, text="Writing write-protected working copy of the memory image...")
+                eta.update(acquire_w * 0.5, "Writing write-protected working copy of the memory image...", force=True)
                 dump_path = preserve_upload(chain, uploaded_dump)
             else:
                 dump_path = os.path.abspath(local_path)
-                chain = open_case(dump_name, "memory-dump", ei.hash_file(dump_path),
+                chain = open_case(dump_name, "memory-dump", ei.hash_file(dump_path, progress=hash_progress),
                                   "Memory image referenced in place (read-only, not copied)",
                                   details=f"Source path: {dump_path} | Intake check: {dump_format}")
 
+            tm.record_hash(dump_size, time.time() - t_acquire)
             logger.info(f"Memory dump extraction started: CASE={chain.case_id} | {dump_name}")
+            t_extract = time.time()
             _, csv_path, report = memdump_extractor.extract_features(
                 dump_path,
                 out_dir     = os.path.dirname(case_path(chain, "extraction", "_")),
-                progress_cb = lambda frac, msg: progress_bar.progress(min(frac, 1.0), text=msg),
+                progress_cb = lambda frac, msg: eta.update(acquire_w + (1 - acquire_w) * frac, msg),
             )
+            tm.record_extraction(dump_size, time.time() - t_extract)
         except memdump_extractor.ExtractionError as e:
-            progress_bar.empty()
+            eta.empty()
             logger.error(f"Memory dump extraction failed for {dump_name}: {e}")
             st.error(f"❌ {e}")
             return None
-        progress_bar.empty()
+        eta.empty()
 
         integ = report["integrity"]
         chain.record("Pre-Extraction", "Image hash verified immediately before Volatility processing",
@@ -1408,6 +1458,7 @@ def render_memory_dump_ingestion():
                icon=":material/check_circle:")
     for w in report.get("warnings", []):
         st.warning(w)
+    render_hash_verification(report, ctx)
 
     with st.expander("Volatility extraction details", icon=":material/memory:"):
         plugin_rows = [
@@ -1420,10 +1471,6 @@ def render_memory_dump_ingestion():
         if os_info.get("SystemTime"):
             st.caption(f"Memory acquired at (system time): {os_info.get('SystemTime')}")
         st.caption(f"Raw plugin output & CSV saved in: `{report.get('output_dir')}`")
-
-        with open(ctx["csv_path"], "rb") as f:
-            st.download_button("Download extracted CSV", data=f.read(), icon=":material/download:",
-                               file_name=os.path.basename(ctx["csv_path"]), mime="text/csv")
 
     return ctx
 
@@ -1689,14 +1736,17 @@ def render_evidence_origin(source: str):
         n1, n2 = st.columns([1.2, 1])
         notes     = n1.text_input("Origin notes", placeholder="e.g. Seized under warrant 22/114; machine was running",
                                   key=k("notes"))
-        reported  = n2.text_input("Hash from the acquisition tool (optional)", key=k("hash"),
-                                  placeholder="SHA-256 or MD5 printed by DumpIt / FTK Imager…",
-                                  help="If given, it is compared with the hash computed when the evidence arrives. "
-                                       "A mismatch blocks analysis.").strip().lower()
+        reported  = n2.text_input("Expected hash (optional)", key=k("hash"),
+                                  placeholder="SHA-256, SHA-1 or MD5 from the acquisition tool or a .sha256 file",
+                                  help="Works for memory dumps and CSV files. It is compared with the hash computed "
+                                       "when the evidence arrives; a mismatch blocks analysis. Paste a whole "
+                                       ".sha256 line or tool log if you like - the hash is picked out.")
+        found = ei.parse_hash_text(reported)
+        reported = found[0][0] if found else reported.strip().lower()
         st.caption("Recorded in the custody ledger when the evidence is acquired. Changes made afterwards apply "
                    "to the next evidence item only.")
-    if reported and not re.fullmatch(r"[0-9a-f]{32}|[0-9a-f]{64}", reported):
-        st.error("The acquisition-tool hash must be an MD5 (32 hex characters) or SHA-256 (64 hex characters).",
+    if reported and not ei.detect_algorithm(reported):
+        st.error("The expected hash must be an MD5 (32), SHA-1 (40) or SHA-256 (64 hex characters).",
                  icon=":material/error:")
         st.session_state.pop("pending_origin", None)
         return None
@@ -1795,26 +1845,44 @@ def render_ingestion():
                                kind="csv-upload", hashes=hashes, uploaded_file=uploaded)
 
 
+def evidence_bytes(evidence: dict) -> int:
+    """Bytes re-hashed before every analysis: the original evidence (+ the derived CSV for dumps)."""
+    chain = evidence["chain"]
+    size = chain.baseline("evidence").get("size") or 0
+    if evidence.get("csv_role") != "evidence":
+        size += chain.baseline("csv").get("size") or 0
+    return int(size)
+
+
 def run_selected_triage(evidence: dict, df: pd.DataFrame, row_index: int):
     """Integrity checkpoint + model inference for the selected row."""
     rf_model      = load_rf_model()
     expected_cols = rf_model.feature_names_in_.tolist()
     sample_df = iv.feature_matrix(df, expected_cols).iloc[[row_index]]
 
-    with st.spinner("Re-verifying evidence hashes..."):
-        integrity = verify_before_analysis(evidence, sample_df, row_index, expected_cols)
+    tm, size = timing_stats(), evidence_bytes(evidence)
+    estimate = tm.triage_seconds(size)
+    hash_w = min(tm.hash_seconds(size) / max(estimate, 0.1), 0.9)
+    eta = timing.ProgressETA(estimate, f"Re-verifying evidence hashes ({ei.format_size(size)})...")
+    integrity = verify_before_analysis(evidence, sample_df, row_index, expected_cols)
     if not evidence["chain"].is_intact:
+        eta.empty()
         st.session_state["current_triage"] = None
         logger.error(f"ANALYSIS BLOCKED | CASE={evidence['chain'].case_id} | integrity verification failed")
         st.session_state["triage_blocked"] = True
         return
     st.session_state["triage_blocked"] = False
 
-    with st.spinner("Running ML inference, anomaly detection and explainability..."):
-        result = run_triage(sample_df, evidence["name"], row_index, integrity)
-        result["evidence_key"] = evidence["key"]
-        compute_shap(result)
-        compute_lime(result)
+    step = lambda frac, msg: eta.update(hash_w + (1 - hash_w) * frac, msg, force=True)
+    step(0.0, "Running the Random Forest and the zero-day detector...")
+    result = run_triage(sample_df, evidence["name"], row_index, integrity)
+    result["evidence_key"] = evidence["key"]
+    step(0.15, "Explaining the verdict with SHAP...")
+    compute_shap(result)
+    step(0.45, "Cross-checking the explanation with LIME...")
+    compute_lime(result)
+    eta.empty()
+    tm.record_triage(eta.elapsed, size)
     st.session_state["current_triage"] = result
     st.toast(f"Triage complete — {result['risk']}", icon=RISK_ICONS[result["risk"]])
 
@@ -2081,6 +2149,9 @@ def render_dashboard(state: dict):
             run_clicked = st.button("Analyse snapshot", type="primary", width="stretch", icon=":material/play_arrow:",
                                     help="Re-checks the evidence hashes, then runs both models on this snapshot "
                                          "and explains the verdict.")
+        st.caption(f":material/timer: Estimated analysis time: "
+                   f"{timing.approx(timing_stats().triage_seconds(evidence_bytes(evidence)))} — includes "
+                   f"re-verifying {ei.format_size(evidence_bytes(evidence))} of evidence.")
         with c_scan:
             scan_clicked = st.button("Scan all rows", width="stretch", icon=":material/radar:",
                                      help="Quickly scores every snapshot in the file so you can pick the riskiest.")
@@ -2493,7 +2564,9 @@ def main():
 
     PAGES["triage"] = st.Page(triage_page, title="Triage", icon=":material/biotech:", url_path="triage", default=True)
     pages = [PAGES["triage"],
-             st.Page(cases_page, title="Cases", icon=":material/folder_shared:", url_path="cases")]
+             st.Page(cases_page, title="Cases", icon=":material/folder_shared:", url_path="cases"),
+             st.Page(hash_checker.render_hash_checker_page, title="Hash checker", icon=":material/fingerprint:",
+                     url_path="hash-checker")]
     if user["role"] == "admin":
         pages += [st.Page(admin_pages.render_audit_page, title="Audit log", icon=":material/policy:", url_path="audit"),
                   st.Page(admin_pages.render_users_page, title="Users", icon=":material/group:", url_path="users")]

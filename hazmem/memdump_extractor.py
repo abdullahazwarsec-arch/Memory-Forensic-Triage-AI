@@ -303,7 +303,9 @@ def extract_features(dump_path: str, out_dir: str = None, progress_cb=None, max_
 
     # Step 0: integrity baseline of the memory image before any processing
     progress(0.0, "Hashing memory image before extraction (SHA-256 + MD5)...")
-    report["integrity"]["pre_extraction"] = dict(hash_file(dump_path), utc=_utc())
+    report["integrity"]["pre_extraction"] = dict(hash_file(
+        dump_path, progress=lambda done, total: progress(0.0, f"Hashing memory image before extraction... "
+                                                              f"{done * 100 // max(total, 1)}%")), utc=_utc())
 
     # Step 1: identify the OS profile (also downloads/caches kernel symbols once)
     progress(0.0, "Identifying Windows kernel & resolving symbols (windows.info)...")
@@ -349,7 +351,9 @@ def extract_features(dump_path: str, out_dir: str = None, progress_cb=None, max_
     # Step 3: re-hash the image to prove Volatility did not alter the evidence
     progress(0.97, "Re-hashing memory image after extraction (integrity verification)...")
     pre  = report["integrity"]["pre_extraction"]
-    post = dict(hash_file(dump_path), utc=_utc())
+    post = dict(hash_file(
+        dump_path, progress=lambda done, total: progress(0.97, f"Re-hashing memory image after extraction... "
+                                                               f"{done * 100 // max(total, 1)}%")), utc=_utc())
     report["integrity"]["post_extraction"] = post
     report["integrity"]["dump_unchanged"]  = post["sha256"] == pre["sha256"]
     if not report["integrity"]["dump_unchanged"]:
