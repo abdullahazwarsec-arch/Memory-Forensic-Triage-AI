@@ -23,10 +23,6 @@ from lime.lime_tabular import LimeTabularExplainer
 
 import streamlit as st
 
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
 
 import altair as alt
 
@@ -41,6 +37,10 @@ from hazmem import help_page
 from hazmem import assistant
 from hazmem import hash_checker
 from hazmem import timing
+from hazmem import report_pdf
+from hazmem.knowledge import (FEATURE_MEANINGS, get_feature_info, RISK_COLOURS, RESPONSE_ACTIONS,
+                              SIMPLE_ACTIONS, plain_name, recipient_label, origin_label)
+from hazmem.report_pdf import generate_pdf_report
 
 
 # ── SECTION 2: PATHS & FOLDER SETUP ──────────────────────────────────────────
@@ -63,9 +63,11 @@ OUTPUT_DIR  = os.environ.get("HAZMEM_OUTPUT_DIR") or os.path.join(BASE_DIR, "out
 LOG_DIR     = os.path.join(BASE_DIR, "logs")
 SAMPLES_DIR = os.path.join(DATA_DIR, "test_samples")
 CASES_DIR   = os.path.join(OUTPUT_DIR, "cases")   # per-case evidence copies, CSVs, manifests
+REPORTS_DIR = os.path.join(OUTPUT_DIR, "reports")  # sealed PDF reports (+ .sha256)
 
 # Create folders if they don't exist yet
 os.makedirs(OUTPUT_DIR,  exist_ok=True)
+os.makedirs(REPORTS_DIR, exist_ok=True)
 os.makedirs(LOG_DIR,     exist_ok=True)
 os.makedirs(SAMPLES_DIR, exist_ok=True)
 
@@ -79,230 +81,7 @@ audit_log.setup(AUDIT_LOG_PATH)
 logger = logging.getLogger("triage")
 admin_pages.AUDIT_LOG_PATH = AUDIT_LOG_PATH
 hash_checker.OUTPUT_DIR = OUTPUT_DIR
-
-
-# ── SECTION 4: FORENSIC FEATURE DICTIONARY & HUMAN TRANSLATOR ────────────────
-# Translates raw Volatility memory artifacts into plain English for non-technical users & analysts
-FEATURE_MEANINGS = {
-    "svcscan.nservices": {
-        "title": "Windows System Services Count",
-        "desc": "Number of background services registered in the system service database.",
-        "danger": "Malware registers hidden services for persistence or disables security tools."
-    },
-    "svcscan.shared_process_services": {
-        "title": "Shared Service Host Processes (svchost)",
-        "desc": "Count of background services sharing standard Windows svchost.exe processes.",
-        "danger": "Fileless malware hijacks legitimate svchost process pools to hide covert operations."
-    },
-    "svcscan.process_services": {
-        "title": "Dedicated Process Services",
-        "desc": "Windows services operating inside their own dedicated background processes.",
-        "danger": "Unusual counts often reveal persistent backdoor utilities running as services."
-    },
-    "svcscan.kernel_drivers": {
-        "title": "Kernel Driver Registrations",
-        "desc": "System records tracking active Windows ring-0 kernel drivers.",
-        "danger": "Rootkits load unsigned or vulnerable drivers to bypass all endpoint security controls."
-    },
-    "handles.avg_handles_per_proc": {
-        "title": "Average Resource Handles per Process",
-        "desc": "Rate of files, keys, and sockets actively accessed by running applications.",
-        "danger": "Spikes indicate aggressive file enumeration, ransomware sweeps, or spyware data harvesting."
-    },
-    "handles.nhandles": {
-        "title": "Total Open Resource Handles",
-        "desc": "Overall volume of operating system resource handles allocated in memory.",
-        "danger": "Massive handle counts reflect rapid filesystem traversals or memory leak exploits."
-    },
-    "handles.nfile": {
-        "title": "Active File Access Handles",
-        "desc": "Number of open file descriptors maintained across all running processes.",
-        "danger": "Ransomware encrypting files or exfiltration utilities generate abnormal file handles."
-    },
-    "handles.nevent": {
-        "title": "Thread Synchronization Events",
-        "desc": "Internal Windows event signaling objects used for inter-thread coordination.",
-        "danger": "Malware synchronization routines, command beacons, and injected loaders alter event counts."
-    },
-    "handles.nmutant": {
-        "title": "Mutex (Mutant) Synchronization Objects",
-        "desc": "Mutual exclusion objects used by software to ensure only one instance runs.",
-        "danger": "Trojans and ransomware commonly register unique hardcoded Mutexes to avoid re-infection."
-    },
-    "handles.nsection": {
-        "title": "Shared Memory Section Handles",
-        "desc": "Shared memory mappings used to exchange data or execute shared code.",
-        "danger": "Attackers map shared memory sections to inject shellcode across process boundaries."
-    },
-    "handles.nthread": {
-        "title": "Active Execution Thread Handles",
-        "desc": "System references to running CPU execution threads.",
-        "danger": "High counts indicate thread injection, reflective loaders, or covert beacon loops."
-    },
-    "pslist.avg_threads": {
-        "title": "Process Thread Concurrency Density",
-        "desc": "Average execution threads running concurrently inside each active process.",
-        "danger": "Atypical thread density points to injected shellcode, cryptominers, or active C2 beacons."
-    },
-    "pslist.nproc": {
-        "title": "Total Active Process Count",
-        "desc": "Number of active applications and background programs running in memory.",
-        "danger": "Abnormal drops (killed security software) or spikes (malware tools) signal an intrusion."
-    },
-    "pslist.nppid": {
-        "title": "Parent-Child Process Tree Hierarchy (PPID)",
-        "desc": "Authentic parentage tree showing which application launched each child program.",
-        "danger": "PPID spoofing disguises malicious tools to appear as if launched by legitimate Windows parents."
-    },
-    "malfind.ninjections": {
-        "title": "Direct Memory Code Injections",
-        "desc": "Executable memory regions detected floating in RAM with no file on the hard drive.",
-        "danger": "Strongest indicator of fileless malware, Cobalt Strike beacons, or in-memory shellcode payloads."
-    },
-    "malfind.commitCharge": {
-        "title": "Injected Memory Committed Pages",
-        "desc": "Physical RAM pages committed to suspicious unbacked executable memory regions.",
-        "danger": "Directly indicates the size and memory footprint of an active in-memory exploit."
-    },
-    "malfind.protection": {
-        "title": "Executable Memory Permissions (PAGE_EXECUTE)",
-        "desc": "Virtual memory regions marked with Read-Write-Execute (RWX) permissions.",
-        "danger": "Self-modifying exploits and loaders require RWX permissions to unpack malware in memory."
-    },
-    "psxview.not_in_eprocess": {
-        "title": "Hidden Unlinked Process (DKOM Rootkit)",
-        "desc": "A process exists in low-level CPU scheduler memory but was unlinked from the official task list.",
-        "danger": "Rootkits use Direct Kernel Object Manipulation (DKOM) to hide malware from Task Manager & antivirus."
-    },
-    "psxview.not_in_pspCidTable": {
-        "title": "Process Hidden from Handle Table",
-        "desc": "Process present in scheduler structures but omitted from the kernel CID handle table.",
-        "danger": "High-stealth evasion technique designed to conceal active backdoor processes."
-    },
-    "ldrmodules.not_in_load": {
-        "title": "Reflective DLL Module Injection",
-        "desc": "A dynamic link library is executing in RAM without being registered in standard Windows load tables.",
-        "danger": "Hallmark signature of reflective DLL injection running completely fileless in physical memory."
-    },
-    "ldrmodules.not_in_init": {
-        "title": "Uninitialized Memory Module",
-        "desc": "A code module mapped into memory without completing standard Windows OS initialization.",
-        "danger": "Stealth module loading bypassing standard operating system safety checks."
-    },
-    "dlllist.avg_dlls_per_proc": {
-        "title": "Average Loaded DLLs per Process",
-        "desc": "Number of dynamic link library modules linked into active software.",
-        "danger": "DLL search-order hijacking and side-loading attacks inflate loaded DLL counts."
-    },
-    "dlllist.ndlls": {
-        "title": "Total Loaded DLL Modules",
-        "desc": "Overall count of dynamic libraries mapped across all system memory spaces.",
-        "danger": "Large variations indicate widespread library tampering across running utilities."
-    },
-    "callbacks.ncallbacks": {
-        "title": "Kernel Callback Notification Routines",
-        "desc": "Low-level system notification hooks registered by drivers to monitor OS events.",
-        "danger": "Evasion modules and rootkits install callbacks to monitor or blind security scanners."
-    },
-    "callbacks.nanonymous": {
-        "title": "Anonymous Kernel Callbacks",
-        "desc": "Kernel callback pointers referencing raw memory not belonging to any known driver on disk.",
-        "danger": "Severe rootkit indicator: malicious code executing directly within kernel space."
-    }
-}
-
-def get_feature_info(raw_name: str) -> dict:
-    """Returns human-friendly title, description, and threat context for any Volatility feature."""
-    tokens = re.findall(r'[a-zA-Z][a-zA-Z0-9_\.]*', str(raw_name))
-    clean = tokens[0] if tokens else str(raw_name).strip()
-    clean_dot = clean.replace('_', '.')
-    clean_under = clean.replace('.', '_')
-    
-    for key in (clean, clean_dot, clean_under):
-        if key in FEATURE_MEANINGS:
-            return FEATURE_MEANINGS[key]
-            
-    prefix = clean.split('.')[0].lower()
-    fallbacks = {
-        "svcscan": {
-            "title": f"Windows Service Telemetry ({clean})",
-            "desc": "Metrics tracking background Windows services and their host process configurations.",
-            "danger": "Altered service telemetry may indicate persistence setups or stopped security tools."
-        },
-        "handles": {
-            "title": f"Resource Handle Allocation ({clean})",
-            "desc": "Telemetry measuring file, registry, and memory handle allocation rates.",
-            "danger": "Unusual handle usage indicates aggressive file scanning, credential theft, or memory tampering."
-        },
-        "pslist": {
-            "title": f"Process & Thread Hierarchy ({clean})",
-            "desc": "Operating system process scheduling, execution threads, and task allocations.",
-            "danger": "Irregularities reflect injected background processes, spoofed parentage, or hidden tools."
-        },
-        "malfind": {
-            "title": f"Memory Injection Signature ({clean})",
-            "desc": "Detection of executable memory regions lacking disk image backing.",
-            "danger": "Hallmark sign of in-memory beacons, unpackers, or injected shellcode."
-        },
-        "callbacks": {
-            "title": f"Kernel Callback Routine ({clean})",
-            "desc": "Low-level event notification routines registered with the Windows kernel.",
-            "danger": "Rogue callbacks are employed by rootkits to evade AV detection or blind endpoint sensors."
-        },
-        "dlllist": {
-            "title": f"Dynamic Link Library (DLL) Telemetry ({clean})",
-            "desc": "Dynamic shared libraries loaded into process memory spaces.",
-            "danger": "Deviations indicate module hijacking, rogue DLL injection, or sideloaded malware."
-        },
-        "ldrmodules": {
-            "title": f"Module Loader Tracking ({clean})",
-            "desc": "Internal Windows loader tables accounting for active process modules.",
-            "danger": "Unlinked modules indicate reflective code injection running completely in physical RAM."
-        },
-        "psxview": {
-            "title": f"Cross-View Process Inspection ({clean})",
-            "desc": "Multi-table cross-validation of active processes to detect unlinked rootkits.",
-            "danger": "Discrepancies indicate hidden processes obscured via Direct Kernel Object Manipulation (DKOM)."
-        }
-    }
-    
-    if prefix in fallbacks:
-        return fallbacks[prefix]
-        
-    return {
-        "title": f"Memory Artifact: {clean}",
-        "desc": f"Observed variance in RAM telemetry metric '{clean}'.",
-        "danger": "Telemetry value deviates from verified clean baseline operating parameters."
-    }
-
-# Risk-level colours used in Streamlit status boxes
-RISK_COLOURS = {
-    "HIGH RISK":   "red",
-    "SUSPICIOUS":  "orange",
-    "NORMAL":      "green",
-}
-
-# Incident response recommendations per risk tier
-RESPONSE_ACTIONS = {
-    "HIGH RISK": [
-        "🔴 Isolate endpoint from network immediately",
-        "🔴 Preserve full memory dump using Volatility3 or WinPmem",
-        "🔴 Extract and hash all injected process regions",
-        "🔴 Escalate to Tier 2 analyst and open incident ticket",
-        "🔴 Correlate with SIEM and threat intelligence feeds",
-    ],
-    "SUSPICIOUS": [
-        "🟡 Do NOT take automated action — human review required",
-        "🟡 Run additional Volatility plugins: malfind, pstree, netscan",
-        "🟡 Compare process tree against known-good baseline",
-        "🟡 Submit sample to sandbox (Any.run / Hybrid Analysis)",
-    ],
-    "NORMAL": [
-        "🟢 No immediate action required",
-        "🟢 Continue standard monitoring schedule",
-        "🟢 Archive this triage result for baseline comparison",
-    ],
-}
+report_pdf.REPORTS_DIR = REPORTS_DIR
 
 
 # ── SECTION 5: CACHED RESOURCE LOADERS ───────────────────────────────────────
@@ -638,372 +417,6 @@ def render_lime_explanation(result: dict):
                      hide_index=True, width="stretch")
 
 
-# ── SECTION 9: PDF REPORT GENERATOR ──────────────────────────────────────────
-
-def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.DataFrame = None,
-                        chain: "ei.CustodyChain" = None):
-    """
-    Build a comprehensive forensic PDF incident brief and save it to outputs/.
-    Returns (output_path, pdf_bytes) so the dashboard can offer immediate download.
-    Includes full explainability findings (SHAP global attribution + LIME local rules)
-    translated into plain English for non-technical users and forensic investigators.
-    """
-    timestamp_clean = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename        = f"forensic_report_{result['evidence_id']}_{timestamp_clean}.pdf"
-    output_path     = os.path.join(OUTPUT_DIR, filename)
-
-    doc = SimpleDocTemplate(
-        str(output_path),
-        pagesize=letter,
-        leftMargin=36,
-        rightMargin=36,
-        topMargin=36,
-        bottomMargin=36
-    )
-    styles = getSampleStyleSheet()
-
-    # Custom Report Typography
-    title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Heading1'],
-        fontSize=15,
-        leading=18,
-        textColor=colors.HexColor('#1E293B'),
-        spaceAfter=2
-    )
-    subtitle_style = ParagraphStyle(
-        'DocSub',
-        parent=styles['Normal'],
-        fontSize=8,
-        leading=11,
-        textColor=colors.HexColor('#64748B'),
-        spaceAfter=8
-    )
-    h2_style = ParagraphStyle(
-        'DocH2',
-        parent=styles['Heading2'],
-        fontSize=10,
-        leading=13,
-        textColor=colors.HexColor('#0F172A'),
-        spaceBefore=6,
-        spaceAfter=3
-    )
-    cell_style = ParagraphStyle(
-        'CellNorm',
-        parent=styles['Normal'],
-        fontSize=7.5,
-        leading=9.5,
-        textColor=colors.HexColor('#334155')
-    )
-    cell_bold = ParagraphStyle(
-        'CellBold',
-        parent=styles['Normal'],
-        fontSize=7.5,
-        leading=9.5,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#1E293B')
-    )
-    cell_danger = ParagraphStyle(
-        'CellDanger',
-        parent=styles['Normal'],
-        fontSize=7.5,
-        leading=9.5,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#DC2626')
-    )
-    cell_warning = ParagraphStyle(
-        'CellWarning',
-        parent=styles['Normal'],
-        fontSize=7.5,
-        leading=9.5,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#D97706')
-    )
-    cell_normal = ParagraphStyle(
-        'CellNormal',
-        parent=styles['Normal'],
-        fontSize=7.5,
-        leading=9.5,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#16A34A')
-    )
-
-    cell_header = ParagraphStyle('CellHeader', parent=cell_bold, textColor=colors.white)
-
-    def xml_esc(val):
-        """Escape XML entities for ReportLab Paragraph rendering."""
-        return html.escape(str(val) if val is not None else "", quote=False)
-
-    story = []
-
-    # ── Header ────────────────────────────────────────────────
-    brand = Table([[RLImage(ui.LOGO_PNG, width=46, height=46),
-                    [Paragraph("HAZMEM &bull; MEMORY FORENSIC TRIAGE &amp; XAI INVESTIGATION REPORT", title_style),
-                     Paragraph("Explainable AI Memory Forensics &bull; Chain-of-Custody Verified &bull; Confidential",
-                               subtitle_style)]]], colWidths=[56, None])
-    brand.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
-    story.append(brand)
-
-    # ── 1. Chain of custody ───────────────────────────────────
-    story.append(Paragraph("1. Chain of Custody &amp; Evidence Metadata", h2_style))
-    r_idx = result["row_index"]
-    n_feat = len(result.get("feature_cols", []))
-    integ = result.get("integrity", {}) or {}
-    hash_style = ParagraphStyle('HashMono', parent=cell_style, fontName='Courier', fontSize=7.2, leading=9)
-    meta_data = [
-        [Paragraph("Case Number", cell_bold), Paragraph(xml_esc(integ.get("case_id", "N/A")), cell_style)],
-        [Paragraph("Examiner / Analyst", cell_bold), Paragraph(
-            xml_esc(integ.get("analyst", "N/A") + (f" ({integ['organisation']})" if integ.get("organisation") else "")),
-            cell_style)],
-        [Paragraph("Case Session", cell_bold), Paragraph(
-            xml_esc(f"{integ.get('session_id', '')} - opened {integ.get('session_opened', '')}"), cell_style)],
-        [Paragraph("Evidence Item ID", cell_bold), Paragraph(xml_esc(integ.get("evidence_item_id", "N/A")), cell_style)],
-        [Paragraph("Analysis ID", cell_bold), Paragraph(xml_esc(result["evidence_id"]), cell_style)],
-        [Paragraph("Analysis Timestamp", cell_bold), Paragraph(xml_esc(result["timestamp"]), cell_style)],
-        [Paragraph("Source Evidence File", cell_bold), Paragraph(
-            f"{xml_esc(result['source_file'])} ({xml_esc(integ.get('evidence_kind', ''))}, "
-            f"{ei.format_size(integ.get('evidence_size', 0) or 0)})", cell_style)],
-        [Paragraph("Evidence Origin", cell_bold), Paragraph(xml_esc(
-            (lambda o: f"{o.get('source_device', 'N/A')}"
-                       f"{(' - custodian ' + o['custodian']) if o.get('custodian') else ''}"
-                       f"{(' - ' + o['location']) if o.get('location') else ''}")(
-                (integ.get("provenance") or {}).get("origin") or {})), cell_style)],
-        [Paragraph("Collected By / When / Tool", cell_bold), Paragraph(xml_esc(
-            (lambda o: f"{o.get('collected_by', 'N/A')} - {o.get('collected_at', 'N/A')} - "
-                       f"{o.get('acquisition_tool', 'N/A')}")(
-                (integ.get("provenance") or {}).get("origin") or {})), cell_style)],
-        [Paragraph("Prepared For", cell_bold), Paragraph(xml_esc(
-            (lambda r: f"{recipient_label(r)} - {r.get('purpose', 'N/A')}"
-                       f"{(' - ref ' + r['reference']) if r.get('reference') else ''}")(
-                (integ.get("provenance") or {}).get("prepared_for") or {})), cell_style)],
-        [Paragraph("Evidence SHA-256", cell_bold), Paragraph(xml_esc(integ.get("evidence_sha256", "N/A")), hash_style)],
-        [Paragraph("Evidence MD5", cell_bold), Paragraph(xml_esc(integ.get("evidence_md5", "N/A")), hash_style)],
-    ]
-    if integ.get("csv_sha256"):
-        meta_data.append([Paragraph("Derived Feature CSV SHA-256", cell_bold), Paragraph(
-            f"{xml_esc(integ['csv_sha256'])}<br/><font face='Helvetica'>{xml_esc(integ.get('csv_name', ''))}</font>",
-            hash_style)])
-    meta_data += [
-        [Paragraph("Analysed Vector SHA-256", cell_bold), Paragraph(xml_esc(integ.get("vector_sha256", "N/A")), hash_style)],
-        [Paragraph("Evaluated Record / Row", cell_bold), Paragraph(f"Row {r_idx}", cell_style)],
-        [Paragraph("Telemetry Features", cell_bold), Paragraph(f"{n_feat} memory telemetry indicators", cell_style)],
-        [Paragraph("Input Validation", cell_bold), Paragraph(xml_esc(integ.get("input_validation") or "N/A"),
-                                                              cell_style if integ.get("input_validation", "").startswith("PASSED")
-                                                              else cell_warning)],
-        [Paragraph("Analysis Engines", cell_bold), Paragraph("Random Forest Classifier (150 trees) + Isolation Forest (Zero-Day Anomaly Detector)", cell_style)],
-    ]
-    if chain is not None:
-        n_match = sum(e["status"] == ei.STATUS_MATCH for e in chain.events)
-        integrity_text = (
-            f"VERIFIED - {n_match} re-verification(s) across {len(chain.events)} custody checkpoints match the "
-            f"acquisition hashes; ledger hash-links intact. Evidence was not modified by this tool."
-            if chain.is_intact else
-            "COMPROMISED - one or more hash re-verifications did not match. See Section 7."
-        )
-        meta_data.append([Paragraph("Integrity Status", cell_bold),
-                          Paragraph(xml_esc(integrity_text), cell_normal if chain.is_intact else cell_danger)])
-    meta_table = Table(meta_data, colWidths=[140, 400])
-    meta_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F8FAFC")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
-    ]))
-    story.append(meta_table)
-    story.append(Spacer(1, 6))
-
-    # ── 2. Verdict ────────────────────────────────────────────
-    story.append(Paragraph("2. Automated Forensic Triage Verdict", h2_style))
-    risk_style = (
-        cell_danger if result["risk"] == "HIGH RISK" else
-        cell_warning if result["risk"] == "SUSPICIOUS" else
-        cell_normal
-    )
-    anomaly_text = (
-        "ANOMALY DETECTED (Memory profile deviates significantly from known baseline - potential zero-day)"
-        if result.get("is_anomaly")
-        else "No novel memory anomaly detected (consistent with baseline distributions)"
-    )
-    anomaly_style = cell_danger if result.get("is_anomaly") else cell_style
-    p_conf = result["probability"] * 100
-
-    verdict_data = [
-        [Paragraph("Risk Classification", cell_bold), Paragraph(xml_esc(result["risk"]), risk_style)],
-        [Paragraph("Malware Confidence", cell_bold), Paragraph(f"{p_conf:.2f}%", cell_style)],
-        [Paragraph("Primary Prediction", cell_bold), Paragraph("MALWARE" if result["prediction"] else "BENIGN", risk_style)],
-        [Paragraph("Zero-Day Anomaly Check", cell_bold), Paragraph(xml_esc(anomaly_text), anomaly_style)],
-    ]
-    verdict_table = Table(verdict_data, colWidths=[140, 400])
-    verdict_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F8FAFC")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
-    ]))
-    story.append(verdict_table)
-    story.append(Spacer(1, 6))
-
-    # ── 3. SHAP ───────────────────────────────────────────────
-    story.append(Paragraph("3. Explainable AI: Key Decision Drivers (SHAP Global Attribution)", h2_style))
-    if shap_df is not None and not shap_df.empty:
-        shap_table_data = [
-            [
-                Paragraph("Plain-English Indicator", cell_header),
-                Paragraph("Telemetry Metric", cell_header),
-                Paragraph("Verdict Impact", cell_header),
-                Paragraph("Forensic Meaning &amp; Threat Danger", cell_header)
-            ]
-        ]
-        for _, row in shap_df.head(5).iterrows():
-            is_mal = row["SHAP Value"] > 0
-            imp_style = cell_danger if is_mal else cell_normal
-            sv = row["SHAP Value"] * 100
-            imp_text = f"+{sv:.1f}% (Malware)" if is_mal else f"{sv:.1f}% (Benign)"
-            desc = row.get("What This Is", "")
-            dng = row.get("Forensic Context", "")
-            explanation = f"{desc} Threat Context: {dng}"
-            shap_table_data.append([
-                Paragraph(xml_esc(row["Plain English Indicator"]), cell_bold),
-                Paragraph(xml_esc(row["Technical Metric"]), cell_style),
-                Paragraph(imp_text, imp_style),
-                Paragraph(xml_esc(explanation), cell_style),
-            ])
-        shap_table = Table(shap_table_data, colWidths=[130, 95, 95, 220])
-        shap_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E293B")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
-        ]))
-        story.append(shap_table)
-    else:
-        story.append(Paragraph("SHAP global attribution details not available for this run.", cell_style))
-    story.append(Spacer(1, 6))
-
-    # ── 4. LIME ───────────────────────────────────────────────
-    story.append(Paragraph("4. Explainable AI: Corroborating Evidence (LIME Local Rules)", h2_style))
-    if lime_df is not None and not lime_df.empty:
-        lime_table_data = [
-            [
-                Paragraph("Plain-English Indicator", cell_header),
-                Paragraph("Observed Telemetry Rule", cell_header),
-                Paragraph("Local Weight", cell_header),
-                Paragraph("Forensic Interpretation", cell_header)
-            ]
-        ]
-        for _, row in lime_df.head(4).iterrows():
-            is_mal = row["LIME Weight"] > 0
-            w_style = cell_danger if is_mal else cell_normal
-            lw = row["LIME Weight"] * 100
-            w_text = f"+{lw:.1f}% (Malware)" if is_mal else f"{lw:.1f}% (Benign)"
-            obs_cond = str(row.get("Observed Condition", ""))
-            desc = row.get("What This Means", "")
-            dng = row.get("Forensic Context", "")
-            explanation = f"{desc} Danger: {dng}"
-            lime_table_data.append([
-                Paragraph(xml_esc(row["Plain English Indicator"]), cell_bold),
-                Paragraph(xml_esc(obs_cond), cell_style),
-                Paragraph(w_text, w_style),
-                Paragraph(xml_esc(explanation), cell_style),
-            ])
-        lime_table = Table(lime_table_data, colWidths=[130, 110, 80, 220])
-        lime_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E293B")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
-        ]))
-        story.append(lime_table)
-    else:
-        story.append(Paragraph("LIME local decision rule data not available for this run.", cell_style))
-    story.append(Spacer(1, 6))
-
-    # ── 5. Incident response ──────────────────────────────────
-    story.append(Paragraph("5. Recommended Incident Response Playbook", h2_style))
-    actions = RESPONSE_ACTIONS.get(result["risk"], [])
-    for act in actions:
-        clean_act = re.sub(r'^[^\w\s]+', '', act).strip()
-        story.append(Paragraph(f"&bull; {xml_esc(clean_act)}", cell_style))
-    story.append(Spacer(1, 6))
-
-    # ── 6. Disclaimer ─────────────────────────────────────────
-    story.append(Paragraph("6. Legal &amp; Forensic Disclaimer", h2_style))
-    story.append(Paragraph(
-        "This triage report is generated by an Explainable AI Memory Forensics System to assist incident "
-        "responders and forensic investigators. Automated assessments do not constitute sole definitive "
-        "legal evidence. All findings must be corroborated by a qualified human forensic analyst.",
-        cell_style
-    ))
-
-    # ── 7. Evidence integrity ledger ──────────────────────────
-    if chain is not None:
-        story.append(Spacer(1, 6))
-        story.append(Paragraph("7. Evidence Integrity Verification &amp; Chain-of-Custody Ledger", h2_style))
-        story.append(Paragraph(
-            "Every artefact handled by the tool was hashed (SHA-256) when first received and re-hashed at each "
-            "processing stage. MATCH means the recomputed hash equals the hash recorded at acquisition. Each "
-            "ledger entry is chained to the previous entry by an HMAC-SHA256 link keyed with the lab's secret "
-            f"ledger key (key ID {xml_esc(ei.ledger_key_id())}), so the ledger cannot be altered and re-chained "
-            "without that key.",
-            cell_style
-        ))
-        story.append(Spacer(1, 4))
-        ledger_style = ParagraphStyle('Ledger', parent=cell_style, fontSize=6.6, leading=8.2)
-        ledger_hash  = ParagraphStyle('LedgerHash', parent=ledger_style, fontName='Courier', fontSize=6.2, leading=7.8)
-        ledger_data = [[Paragraph(h, cell_bold) for h in ("#", "Time (UTC)", "Stage / Action", "Artefact", "SHA-256", "Status")]]
-        status_styles = {ei.STATUS_MATCH: cell_normal, ei.STATUS_MISMATCH: cell_danger, ei.STATUS_MISSING: cell_warning}
-        for e in chain.events:
-            ledger_data.append([
-                Paragraph(str(e["seq"]), ledger_style),
-                Paragraph(xml_esc(e["timestamp"].replace(" UTC", "")), ledger_style),
-                Paragraph(f"<b>{xml_esc(e['stage'])}</b><br/>{xml_esc(e['action'])}", ledger_style),
-                Paragraph(xml_esc(e["artifact"]), ledger_style),
-                Paragraph(xml_esc(e["sha256"] or "-"), ledger_hash),
-                Paragraph(xml_esc(e["status"]), status_styles.get(e["status"], cell_bold)),
-            ])
-        ledger_table = Table(ledger_data, colWidths=[18, 62, 150, 85, 165, 60], repeatRows=1)
-        ledger_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E2E8F0")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ]))
-        story.append(ledger_table)
-        story.append(Spacer(1, 4))
-        story.append(Paragraph(
-            f"Ledger head hash: <font face='Courier'>{xml_esc(chain.head_hash)}</font><br/>"
-            "Report seal: a document cannot contain its own hash. The SHA-256 of this PDF is computed immediately "
-            "after generation and recorded in the custody manifest (custody_manifest.json), the audit log "
-            "(logs/triage_audit.log) and a '&lt;report&gt;.pdf.sha256' sidecar file. To verify this copy, run "
-            "<font face='Courier'>certutil -hashfile &lt;report.pdf&gt; SHA256</font> (Windows) or "
-            "<font face='Courier'>sha256sum &lt;report.pdf&gt;</font> and compare with those records.",
-            cell_style
-        ))
-
-    # ── Examiner declaration ──────────────────────────────────
-    story.append(Spacer(1, 10))
-    story.append(Paragraph("Examiner Declaration", h2_style))
-    story.append(Paragraph(
-        f"I, {xml_esc(integ.get('analyst', '________________'))}, examined the evidence listed above under case "
-        f"{xml_esc(integ.get('case_id', '________'))}. The findings in this report were produced by the tool "
-        "and reviewed by me.", cell_style))
-    story.append(Spacer(1, 16))
-    story.append(Paragraph("Signature: ______________________________ &nbsp;&nbsp;&nbsp; Date: ________________", cell_style))
-
-    # Build document
-    doc.build(story)
-
-    # Read binary bytes for Streamlit download button
-    with open(output_path, "rb") as f:
-        pdf_bytes = f.read()
-
-    logger.info(f"PDF report saved: {output_path} | EVIDENCE_ID={result['evidence_id']}")
-    return output_path, pdf_bytes
-
-
 # ── SECTION 10: STREAMLIT UI & DAVID LANGARICA DESIGN SYSTEM ──────────────────
 
 # ── Case sessions ─────────────────────────────────────────────────────────────
@@ -1036,6 +449,11 @@ def save_case_record(record: dict):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(record, f, indent=2)
+
+
+def expert() -> bool:
+    """True when the user switched on "Show technical details" (hashes, ledger, charts, engines)."""
+    return bool(st.session_state.get("expert_mode", False))
 
 
 def active_case():
@@ -1100,6 +518,24 @@ def register_evidence(chain):
     save_case_record(record)
 
 
+def render_case_details(session: dict, org: str, previous: str):
+    """Full case session details (technical view)."""
+    ui.render_html(f"""
+        <div class="fx-kpis">
+          {ui.kpi("Case number", ui.esc(session['case_number']), mono=True, wide=True)}
+          {ui.kpi("Analyst", ui.esc(session['analyst']), ui.esc(session['organisation']), small=True)}
+          {ui.kpi("Prepared for", ui.esc((session.get('recipient') or {}).get('name', '—')),
+                  ui.esc(' · '.join(v for v in ((session.get('recipient') or {}).get('organisation'),
+                                                (session.get('recipient') or {}).get('purpose')) if v)),
+                  small=True)}
+          {ui.kpi("Session opened", ui.esc(session['opened_local']), ui.esc(session['opened_utc']), small=True)}
+        </div>
+        <div style="color: var(--muted); font-size: 0.9rem; margin-top: 0.5rem;">
+          Session <code>{session['session_id']}</code>{org}{previous}{(' · ' + ui.esc(session['notes'])) if session['notes'] else ''}
+        </div>
+        """)
+
+
 def render_case_session():
     """Mandatory case session gate. Returns the active session or None."""
     session = active_case()
@@ -1109,46 +545,41 @@ def render_case_session():
                     f"{'s' if session['prior_sessions'] != 1 else ''})" if session["prior_sessions"] else "")
         col_info, col_close = st.columns([4.2, 1.2], vertical_alignment="center")
         with col_info:
-            ui.render_html(f"""
-            <div class="fx-kpis">
-              {ui.kpi("Case number", ui.esc(session['case_number']), mono=True, wide=True)}
-              {ui.kpi("Analyst", ui.esc(session['analyst']), ui.esc(session['organisation']), small=True)}
-              {ui.kpi("Prepared for", ui.esc((session.get('recipient') or {}).get('name', '—')),
-                      ui.esc(' · '.join(v for v in ((session.get('recipient') or {}).get('organisation'),
-                                                    (session.get('recipient') or {}).get('purpose')) if v)),
-                      small=True)}
-              {ui.kpi("Session opened", ui.esc(session['opened_local']), ui.esc(session['opened_utc']), small=True)}
-            </div>
-            <div style="color: var(--muted); font-size: 0.9rem; margin-top: 0.5rem;">
-              Session <code>{session['session_id']}</code>{org}{previous}{(' · ' + ui.esc(session['notes'])) if session['notes'] else ''}
-            </div>
-            """)
+            if not expert():
+                recipient = session.get("recipient") or {}
+                ui.kpi_row([
+                    ui.kpi("Case number", ui.esc(session["case_number"]), mono=True),
+                    ui.kpi("Prepared for", ui.esc(recipient.get("name", "—")), ui.esc(recipient.get("purpose", "")),
+                           small=True),
+                    ui.kpi("Started", ui.esc(session["opened_local"][:16]), small=True),
+                ])
+            else:
+                render_case_details(session, org, previous)
         with col_close:
             if st.button("Close case", width="stretch", icon=":material/lock:"):
                 confirm_close_case()
         return session
 
+
+    user = st.session_state["auth_user"]
+    analyst = f"{user['full_name']} ({user['username']})"
     with st.form("open_case_form", border=False):
         c1, c2 = st.columns(2)
-        with c1:
-            case_number = st.text_input("Case number *", value=ei.suggest_case_number(),
-                                        help="Your lab's case reference. Letters, digits, - _ . / (3-40 characters).")
-            organisation = st.text_input("Unit / organisation", placeholder="e.g. CSIRT, DFIR Lab")
-        with c2:
-            user = st.session_state["auth_user"]
-            analyst = f"{user['full_name']} ({user['username']})"
-            st.text_input("Analyst (signed-in account)", value=analyst, disabled=True,
-                          help="Case actions are attributed to the authenticated user.")
-            notes = st.text_input("Case notes", placeholder="e.g. Suspected ransomware on HR-PC-07")
-        st.markdown("**Prepared for** — who will receive the findings and evidence")
-        r1, r2, r3, r4 = st.columns([1.2, 1.2, 1.1, 0.9])
-        recipient_name = r1.text_input("Recipient *", placeholder="e.g. DCI Sarah Khan")
-        recipient_org  = r2.text_input("Recipient organisation", placeholder="e.g. Metro Police Cyber Unit")
-        purpose        = r3.selectbox("Purpose", PURPOSES)
-        reference      = r4.text_input("Reference no.", placeholder="e.g. REQ-2026-114")
-        st.caption(f"The session start time is recorded automatically: **{ei.local_timestamp()}** "
-                   f"(every custody event is also stamped in UTC).")
-        submitted = st.form_submit_button("Open case session", type="primary", icon=":material/folder_open:")
+        case_number = c1.text_input("Case number *", value=ei.suggest_case_number(),
+                                    help="Your reference for this investigation (a number is suggested).")
+        recipient_name = c2.text_input("Recipient *", placeholder="Who gets the findings, e.g. DCI Sarah Khan",
+                                       help="The person or team the findings and evidence are prepared for.")
+        with st.expander("More details (optional)", icon=":material/tune:"):
+            d1, d2 = st.columns(2)
+            recipient_org = d1.text_input("Recipient organisation", placeholder="e.g. Metro Police Cyber Unit")
+            purpose       = d2.selectbox("Purpose", PURPOSES)
+            reference     = d1.text_input("Reference no.", placeholder="e.g. REQ-2026-114")
+            organisation  = d2.text_input("Your unit / organisation", placeholder="e.g. CSIRT, DFIR Lab")
+            notes         = d1.text_input("Case notes", placeholder="e.g. Suspected ransomware on HR-PC-07")
+            d2.text_input("Analyst (signed-in account)", value=analyst, disabled=True,
+                          help="Case actions are attributed to the signed-in account.")
+        st.caption(f"Signed in as **{analyst}** · the start time is recorded automatically.")
+        submitted = st.form_submit_button("Start case", type="primary", icon=":material/rocket_launch:")
 
     if submitted:
         case_number = case_number.strip()
@@ -1193,16 +624,6 @@ def open_case(evidence_name: str, kind: str, hashes: dict, action: str, details:
     record_provenance(chain, st.session_state.get("pending_origin") or {}, session.get("recipient") or {})
     register_evidence(chain)
     return chain
-
-
-def recipient_label(recipient: dict) -> str:
-    name, org = recipient.get("name", ""), recipient.get("organisation", "")
-    return f"{name} ({org})" if name and org else name or org or "-"
-
-
-def origin_label(origin: dict) -> str:
-    who = f" (custodian: {origin['custodian']})" if origin.get("custodian") else ""
-    return f"{origin.get('source_device', '-')}{who}"
 
 
 def record_provenance(chain, origin: dict, recipient: dict):
@@ -1638,11 +1059,14 @@ def render_evidence_summary(ctx: dict, df: pd.DataFrame):
     intact = chain.is_intact
     integrity = (ui.pill("Verified", "good") if intact else ui.pill("Compromised", "critical"))
     ui.kpi_row([
-        ui.kpi("Evidence file", ui.esc(ctx["name"]), KIND_LABELS.get(ctx["kind"], ctx["kind"]), small=True, wide=True),
+        ui.kpi("Evidence", ui.esc(ctx["name"]), KIND_LABELS.get(ctx["kind"], ctx["kind"]), small=True, wide=True),
         ui.kpi("Size", ei.format_size(ev.get("size", 0) or 0)),
-        ui.kpi("Records", f"{len(df):,}", f"{len(df.columns)} features each"),
-        ui.kpi("Integrity", integrity, f"{len(chain.events)} checkpoints"),
+        ui.kpi("Snapshots", f"{len(df):,}", "ready to analyse" if not expert() else f"{len(df.columns)} features each"),
+        ui.kpi("Integrity", integrity, "unchanged since it arrived" if intact and not expert()
+               else f"{len(chain.events)} checkpoints"),
     ])
+    if not expert():
+        return
     hashes = (ui.hash_line("Evidence item ID", chain.evidence_id)
               + ui.hash_line("Evidence SHA-256", ev.get("sha256", "")) + ui.hash_line("Evidence MD5", ev.get("md5", "")))
     if csv:
@@ -1681,8 +1105,11 @@ def render_feature_validation(ctx: dict, df: pd.DataFrame) -> bool:
         log_fn(f"INPUT VALIDATION | CASE={chain.case_id} | EVIDENCE={chain.evidence_id} | {iv.summary(report)}")
 
     if report["severity"] == iv.SEVERITY_OK:
-        st.success(f"**Input validation passed** — all {report['expected']} model features present, numeric, "
-                   f"finite and non-negative.", icon=":material/fact_check:")
+        if expert():
+            st.success(f"**Input validation passed** — all {report['expected']} model features present, numeric, "
+                       f"finite and non-negative.", icon=":material/fact_check:")
+        else:
+            st.success("**Evidence checked** — complete and ready to analyse.", icon=":material/fact_check:")
         return True
 
     problems = "\n".join(f"- {p}" for p in report["problems"])
@@ -1717,34 +1144,36 @@ def render_evidence_origin(source: str):
     """
     defaults = SAMPLE_ORIGIN if source == "sample" else {}
     k = lambda field: f"origin_{source}_{field}"
-    with st.expander("Evidence origin — where did this evidence come from?", icon=":material/travel_explore:",
+    with st.expander("Where did this evidence come from?", icon=":material/travel_explore:",
                      expanded=source != "sample"):
         c1, c2, c3 = st.columns(3)
-        device    = c1.text_input("Source device / host *", value=defaults.get("source_device", ""),
-                                  placeholder="e.g. HR-PC-07 (Dell OptiPlex, S/N 4XK2)", key=k("device"))
-        custodian = c2.text_input("Owner / custodian", value=defaults.get("custodian", ""),
-                                  placeholder="e.g. John Smith, HR department", key=k("custodian"))
-        location  = c3.text_input("Collected from (location)", value=defaults.get("location", ""),
-                                  placeholder="e.g. HQ, 3rd floor, desk 14", key=k("location"))
-        c4, c5, c6, c7 = st.columns([1.3, 1, 0.8, 1.3])
-        collector = c4.text_input("Collected by *", value=defaults.get("collected_by", ""),
-                                  placeholder="Name of the person who acquired it", key=k("collector"))
-        day       = c5.date_input("Collection date", key=k("date"))
-        at        = c6.time_input("Time", key=k("time"))
-        tool      = c7.selectbox("Acquisition tool", ACQUISITION_TOOLS, key=k("tool"),
-                                 index=ACQUISITION_TOOLS.index(defaults.get("acquisition_tool", "DumpIt")))
-        n1, n2 = st.columns([1.2, 1])
-        notes     = n1.text_input("Origin notes", placeholder="e.g. Seized under warrant 22/114; machine was running",
-                                  key=k("notes"))
-        reported  = n2.text_input("Expected hash (optional)", key=k("hash"),
+        device    = c1.text_input("Device / computer name *", value=defaults.get("source_device", ""),
+                                  placeholder="e.g. HR-PC-07", key=k("device"))
+        collector = c2.text_input("Collected by *", value=defaults.get("collected_by", ""),
+                                  placeholder="Who copied the evidence", key=k("collector"))
+        reported  = c3.text_input("Expected hash (optional)", key=k("hash"),
                                   placeholder="SHA-256, SHA-1 or MD5 from the acquisition tool or a .sha256 file",
                                   help="Works for memory dumps and CSV files. It is compared with the hash computed "
                                        "when the evidence arrives; a mismatch blocks analysis. Paste a whole "
                                        ".sha256 line or tool log if you like - the hash is picked out.")
         found = ei.parse_hash_text(reported)
         reported = found[0][0] if found else reported.strip().lower()
-        st.caption("Recorded in the custody ledger when the evidence is acquired. Changes made afterwards apply "
-                   "to the next evidence item only.")
+        custodian, location, notes = (defaults.get("custodian", ""), defaults.get("location", ""), "")
+        day, at = datetime.now().date(), datetime.now().time().replace(microsecond=0)
+        tool = defaults.get("acquisition_tool", "DumpIt")
+        if st.toggle("Add more details (owner, location, date, tool)", key=k("more"), value=expert()):
+            m1, m2, m3 = st.columns(3)
+            custodian = m1.text_input("Owner / custodian", value=custodian, placeholder="e.g. John Smith, HR",
+                                      key=k("custodian"))
+            location  = m2.text_input("Collected from (location)", value=location,
+                                      placeholder="e.g. HQ, 3rd floor", key=k("location"))
+            tool      = m3.selectbox("Acquisition tool", ACQUISITION_TOOLS, key=k("tool"),
+                                     index=ACQUISITION_TOOLS.index(tool))
+            m4, m5, m6 = st.columns([1, 0.7, 2])
+            day       = m4.date_input("Collection date", key=k("date"))
+            at        = m5.time_input("Time", key=k("time"))
+            notes     = m6.text_input("Notes", placeholder="e.g. Seized under warrant 22/114", key=k("notes"))
+        st.caption("Saved with the evidence when it is added. Changes made afterwards apply to the next item.")
     if reported and not ei.detect_algorithm(reported):
         st.error("The expected hash must be an MD5 (32), SHA-1 (40) or SHA-256 (64 hex characters).",
                  icon=":material/error:")
@@ -1803,7 +1232,7 @@ def render_ingestion():
     source = st.segmented_control(
         "Evidence source",
         options=["sample", "csv", "dump"],
-        format_func={"sample": ":material/science: Sample profile", "csv": ":material/table_view: Volatility CSV",
+        format_func={"sample": ":material/science: Try a sample", "csv": ":material/table_view: Feature file (CSV)",
                      "dump": ":material/memory: Memory dump"}.get,
         default="sample",
         key="ingest_source",
@@ -1820,7 +1249,7 @@ def render_ingestion():
         if not available:
             st.error("No sample profiles found in `data/test_samples/`.")
             return None
-        selected = st.selectbox("Sample memory profile", available, format_func=lambda s: SAMPLE_PRESETS.get(s, s))
+        selected = st.selectbox("Choose a sample", available, format_func=lambda s: SAMPLE_PRESETS.get(s, s))
         path = os.path.join(SAMPLES_DIR, selected)
         hashes = ei.hash_file(path)
         return ingest_csv_evidence(key=f"sample:{selected}:{hashes['sha256']}", name=selected,
@@ -1910,6 +1339,18 @@ def render_verdict(result: dict, chain):
     anomaly_html = ""
     if result["is_anomaly"]:
         anomaly_html = ui.banner("radar", "Zero-day anomaly", "Isolation Forest flagged this profile as an outlier versus known baselines.", "accent")
+    if not expert():
+        tiles = "".join([
+            ui.kpi("Risk level", f"{ui.icon(RISK_GLYPHS[risk])} {PLAIN_VERDICT[risk][1]}", color=ui.TONES[tone][0]),
+            ui.kpi("New or unknown threat?", f"{ui.icon('radar')} Possibly" if result["is_anomaly"]
+                   else f"{ui.icon('check_circle')} No", color=ui.WARNING if result["is_anomaly"] else ui.GOOD),
+            ui.kpi("Evidence", f"{ui.icon('lock')} Unchanged" if chain.is_intact else f"{ui.icon('lock_open')} Changed!",
+                   "exactly as it was when it arrived" if chain.is_intact else "do not rely on this result",
+                   color=ui.GOOD if chain.is_intact else ui.CRITICAL, wide=True),
+        ])
+        ui.render_html(f'<div class="fx-card"><div class="fx-verdict"><div>{ui.gauge(pct, tone, "Malware risk")}'
+                       f'</div><div><div class="fx-kpis">{tiles}</div></div></div></div>')
+        return
     tiles = "".join([
         ui.kpi("Risk level", f"{ui.icon(RISK_GLYPHS[risk])} {risk}", color=ui.TONES[tone][0]),
         ui.kpi("Classification", f"{ui.icon('coronavirus')} MALWARE" if is_malware else f"{ui.icon('shield')} BENIGN",
@@ -1933,21 +1374,36 @@ def render_verdict(result: dict, chain):
     """)
 
 
+PLAIN_VERDICT = {
+    "NORMAL": ("verified_user", "Looks clean", "The memory looks like a healthy Windows computer. No action is needed."),
+    "SUSPICIOUS": ("warning", "Needs a closer look",
+                   "Some memory measurements look unusual. A person should review this computer before it is "
+                   "used again."),
+    "HIGH RISK": ("gpp_bad", "Likely infected",
+                  "This memory shows strong signs of malware. Disconnect the computer from the network and "
+                  "escalate to your security team."),
+}
+
+
 def render_overview_tab(result: dict):
     shap_df = result.get("_shap_df")
+    glyph, title, text = PLAIN_VERDICT[result["risk"]]
+    if result.get("is_anomaly"):
+        text += " It also looks unlike anything the system has seen before, which can mean a new kind of threat."
+    ui.render_html(ui.banner(glyph, title, ui.esc(text), RISK_TONES[result["risk"]]))
     col_a, col_b = st.columns([1.05, 1], gap="large")
     with col_a:
-        st.markdown("##### Recommended response")
+        st.markdown("##### What to do next")
         tone = RISK_TONES[result["risk"]]
         fg, bg, border = ui.TONES[tone]
         items = []
-        for i, action in enumerate(RESPONSE_ACTIONS[result["risk"]], start=1):
+        for i, action in enumerate((RESPONSE_ACTIONS if expert() else SIMPLE_ACTIONS)[result["risk"]], start=1):
             text = re.sub(r'^[^\w]+', '', action).strip()
             items.append(f'<div class="fx-action"><div class="fx-action-num" style="color:{fg};background:{bg};'
                          f'border:1px solid {border};">{i}</div><div class="fx-action-text">{ui.esc(text)}</div></div>')
         ui.render_html("".join(items))
     with col_b:
-        st.markdown("##### Why the model decided this")
+        st.markdown("##### Main reasons")
         if shap_df is None:
             st.info("Explanation unavailable for this run.")
         else:
@@ -1955,14 +1411,17 @@ def render_overview_tab(result: dict):
             for _, r in shap_df.head(5).iterrows():
                 up = r["SHAP Value"] > 0
                 color = ui.TOWARD_MALWARE if up else ui.TOWARD_BENIGN
+                detail = (f'{r["SHAP Value"]*100:+.1f} pts · <code>{ui.esc(r["Technical Metric"])}</code>' if expert()
+                          else ("points towards malware" if up else "points towards a clean system"))
                 rows.append(
                     f'<div class="fx-action"><div class="fx-action-num" style="color:{color};border:1px solid {color};">'
                     f'{"▲" if up else "▼"}</div><div style="min-width:0;"><div class="fx-action-text">'
-                    f'{ui.esc(r["Plain English Indicator"])}</div><div style="font-size:0.88rem;color:var(--muted);">'
-                    f'{r["SHAP Value"]*100:+.1f} pts · <code>{ui.esc(r["Technical Metric"])}</code></div></div></div>'
+                    f'{ui.esc(r["Plain English Indicator"] if expert() else plain_name(r["Plain English Indicator"]))}'
+                    f'</div><div style="font-size:0.88rem;color:var(--muted);">{detail}</div></div></div>'
                 )
             ui.render_html("".join(rows))
-            st.caption("▲ pushes toward malware · ▼ pushes toward benign — see the Explainability tab for details.")
+            st.caption("▲ points towards malware · ▼ points towards a clean system."
+                       + (" Details in the Explainability tab." if expert() else ""))
 
 
 def ensure_report(evidence: dict, result: dict) -> dict:
@@ -2063,54 +1522,58 @@ def render_sidebar(case, evidence, result, pdf_ready: bool):
         ui.render_html('<div class="fx-side-label">Active case</div>')
         if case:
             ellipsis = "max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);"
-            rows = (f'<div class="fx-side-row"><span>Case</span><code>{ui.esc(case["case_number"])}</code></div>'
-                    f'<div class="fx-side-row"><span>Analyst</span><span style="{ellipsis}">{ui.esc(case["analyst"])}</span></div>'
-                    f'<div class="fx-side-row"><span>Opened</span><span style="font-size:0.85rem;">{ui.esc(case["opened_local"][5:16])}</span></div>')
+            rows = f'<div class="fx-side-row"><span>Case</span><code>{ui.esc(case["case_number"])}</code></div>'
+            if expert():
+                rows += (f'<div class="fx-side-row"><span>Analyst</span><span style="{ellipsis}">{ui.esc(case["analyst"])}</span></div>'
+                         f'<div class="fx-side-row"><span>Opened</span><span style="font-size:0.85rem;">{ui.esc(case["opened_local"][5:16])}</span></div>')
             if evidence:
                 chain = evidence["chain"]
-                rows += (f'<div class="fx-side-row"><span>Evidence</span><span style="{ellipsis}">{ui.esc(evidence["name"])}</span></div>'
-                         f'<div class="fx-side-row"><span>SHA-256</span><code>{chain.baseline("evidence").get("sha256", "")[:12]}…</code></div>'
-                         f'<div class="fx-side-row"><span>Integrity</span>'
+                rows += f'<div class="fx-side-row"><span>Evidence</span><span style="{ellipsis}">{ui.esc(evidence["name"])}</span></div>'
+                if expert():
+                    rows += f'<div class="fx-side-row"><span>SHA-256</span><code>{chain.baseline("evidence").get("sha256", "")[:12]}…</code></div>'
+                rows += (f'<div class="fx-side-row"><span>Integrity</span>'
                          f'{ui.pill("Verified", "good") if chain.is_intact else ui.pill("Compromised", "critical")}</div>')
             ui.render_html(rows)
         else:
             st.caption("No case open.")
 
+        log_check = audit_log_status()
+        if not log_check["verified"]:
+            st.error("Audit log verification failed: " + "; ".join(log_check["problems"][:3]), icon=":material/gpp_bad:")
+        if not expert():
+            return
         ui.render_html('<div class="fx-side-label">Engines</div>')
         ui.render_html(
             f'<div class="fx-side-row"><span>Random Forest</span>{ui.pill("Online" if rf_found else "Offline", "good" if rf_found else "critical")}</div>'
             f'<div class="fx-side-row"><span>Isolation Forest</span>{ui.pill("Online" if iso_found else "Disabled", "good" if iso_found else "warning")}</div>'
             f'<div class="fx-side-row"><span>Volatility 3</span>{ui.pill("Ready", "good")}</div>'
         )
-        log_check = audit_log_status()
         ui.render_html(
             f'<div class="fx-side-row"><span>Audit log chain</span>'
             f'{ui.pill("Intact", "good") if log_check["verified"] else ui.pill("Broken", "critical")}</div>')
-        if not log_check["verified"]:
-            st.error("Audit log verification failed: " + "; ".join(log_check["problems"][:3]), icon=":material/gpp_bad:")
         st.caption("Audit log: `logs/triage_audit.log`  \nCases: `outputs/cases/`")
 
 
 def render_dashboard(state: dict):
     # ── 0. Case session (mandatory) ───────────────────────────
-    ui.section("Case session", "Every analysis is recorded under a case number and a named analyst.", "folder_open")
+    ui.section("1 · Start a case", "Give the case a number and say who the findings are for.", "folder_open")
     with st.container(border=True):
         session = render_case_session()
     if session is None:
         st.markdown("##### New here? This is how it works")
         ui.guide_steps([
-            ("folder_open", "Open a case", "Fill in the case number and who the findings are for, above."),
-            ("travel_explore", "Record the origin", "Where the evidence came from, who collected it and when."),
-            ("upload_file", "Load evidence", "A sample profile, a Volatility CSV or a raw Windows memory dump."),
-            ("troubleshoot", "Analyse", "Get a plain-English verdict with the reasons behind it."),
-            ("picture_as_pdf", "Share the report", "Download the sealed PDF — every step is hash-verified."),
+            ("rocket_launch", "Start a case", "Type a case number and who the findings are for."),
+            ("upload_file", "Add evidence", "Try a sample, or add a feature file (CSV) or a memory dump."),
+            ("troubleshoot", "Analyse", "Press Analyse evidence - you get a verdict in plain words."),
+            ("picture_as_pdf", "Download the report", "Get the sealed PDF to share with the recipient."),
         ])
         st.caption("Need more detail? Open **Help** in the top menu for a glossary and FAQ.")
         return
     state["case"] = session
 
     # ── 1. Evidence intake ────────────────────────────────────
-    ui.section("Evidence intake", "Load a sample, a Volatility CSV or a raw Windows memory dump.", "inventory_2")
+    ui.section("2 · Add evidence", "Try a sample, or add a feature file (CSV) or a Windows memory dump.",
+               "inventory_2")
     with st.container(border=True):
         evidence = render_ingestion()
     if evidence is None:
@@ -2133,34 +1596,42 @@ def render_dashboard(state: dict):
         st.session_state["last_source_file"] = evidence["key"]
 
     render_evidence_summary(evidence, df)
-    with st.expander("Preview evidence data", icon=":material/table_view:"):
-        st.dataframe(df.head(10), width="stretch")
+    if expert():
+        with st.expander("Preview evidence data", icon=":material/table_view:"):
+            st.dataframe(df.head(10), width="stretch")
     if not render_feature_validation(evidence, df):
         return
 
     # ── 2. Triage controls ────────────────────────────────────
-    ui.section("Run triage", "Pick a memory snapshot (row) and analyse it.", "troubleshoot")
+    ui.section("3 · Analyse", "Check the evidence and get a verdict in plain words.", "troubleshoot")
     with st.container(border=True):
-        c_row, c_run, c_scan, c_reset = st.columns([2, 1.6, 1.45, 1], vertical_alignment="bottom")
-        with c_row:
-            row_index = st.selectbox("Memory snapshot", options=list(range(len(df))),
-                                     format_func=lambda i: f"Row {i}" + (f" of {len(df)}" if len(df) > 1 else ""))
-        with c_run:
-            run_clicked = st.button("Analyse snapshot", type="primary", width="stretch", icon=":material/play_arrow:",
-                                    help="Re-checks the evidence hashes, then runs both models on this snapshot "
-                                         "and explains the verdict.")
-        st.caption(f":material/timer: Estimated analysis time: "
-                   f"{timing.approx(timing_stats().triage_seconds(evidence_bytes(evidence)))} — includes "
-                   f"re-verifying {ei.format_size(evidence_bytes(evidence))} of evidence.")
-        with c_scan:
-            scan_clicked = st.button("Scan all rows", width="stretch", icon=":material/radar:",
-                                     help="Quickly scores every snapshot in the file so you can pick the riskiest.")
-        with c_reset:
-            if st.button("Reset", width="stretch", icon=":material/restart_alt:",
-                         help="Clears the results on screen. Nothing is deleted from the case."):
-                st.session_state["current_triage"] = None
-                st.session_state["batch_summary"] = None
-                st.rerun()
+        multi = len(df) > 1
+        parts = (["row"] if multi or expert() else []) + ["run"] + (["scan"] if multi else []) + (["reset"] if expert() else [])
+        widths = {"row": 2, "run": 1.8, "scan": 1.45, "reset": 1}
+        slot = dict(zip(parts, st.columns([widths[p] for p in parts], vertical_alignment="bottom")))
+        row_index, scan_clicked = 0, False
+        if "row" in slot:
+            with slot["row"]:
+                row_index = st.selectbox("Which snapshot?", options=list(range(len(df))),
+                                         format_func=lambda i: f"Snapshot {i + 1}" + (f" of {len(df)}" if multi else ""))
+        with slot["run"]:
+            run_clicked = st.button("Analyse evidence", type="primary", width="stretch", icon=":material/play_arrow:",
+                                    help="Checks the evidence has not changed, then asks the AI models for a verdict "
+                                         "and explains it.")
+        if "scan" in slot:
+            with slot["scan"]:
+                scan_clicked = st.button("Scan all snapshots", width="stretch", icon=":material/radar:",
+                                         help="Quickly scores every snapshot so you can pick the riskiest one.")
+        if "reset" in slot:
+            with slot["reset"]:
+                if st.button("Reset", width="stretch", icon=":material/restart_alt:",
+                             help="Clears the results on screen. Nothing is deleted from the case."):
+                    st.session_state["current_triage"] = None
+                    st.session_state["batch_summary"] = None
+                    st.rerun()
+        size = evidence_bytes(evidence)
+        st.caption(f":material/timer: Takes {timing.approx(timing_stats().triage_seconds(size))}"
+                   + (f" — includes re-verifying {ei.format_size(size)} of evidence." if expert() else "."))
 
         if scan_clicked:
             rf_model = load_rf_model()
@@ -2189,24 +1660,33 @@ def render_dashboard(state: dict):
     result = st.session_state.get("current_triage")
     if result is None or result.get("evidence_key") != evidence["key"]:
         ui.empty_state("biotech", "Ready to analyse",
-                       "Choose a snapshot above and press <b>Analyse snapshot</b> to get the verdict, explanation and report.")
+                       "Choose a snapshot above and press <b>Analyse evidence</b> to get the verdict, explanation and report.")
         return
     state["result"] = result
 
     if result["row_index"] != row_index:
-        st.info(f"Showing results for **row {result['row_index']}**. Press **Analyse snapshot** to analyse row {row_index}.",
+        st.info(f"Showing results for **row {result['row_index']}**. Press **Analyse evidence** to analyse row {row_index}.",
                 icon=":material/info:")
 
     # ── 3. Results ────────────────────────────────────────────
-    ui.section("Verdict", f"{result['source_file']} · row {result['row_index']} · {result['timestamp']}", "gavel")
+    ui.section("Result", f"{result['source_file']} · snapshot {result['row_index'] + 1} · {result['timestamp']}", "gavel")
     render_verdict(result, evidence["chain"])
 
     pdf_state = ensure_report(evidence, result)       # before the ledger so it includes the report seal
     state["pdf_ready"] = "sha256" in pdf_state
 
     st.write("")
+    if not expert():
+        t_over, t_report = st.tabs([":material/lightbulb: What it means", ":material/picture_as_pdf: Report"])
+        with t_over:
+            render_overview_tab(result)
+        with t_report:
+            render_report_tab(result, pdf_state)
+        st.caption("Want the evidence hashes, explanation charts or custody ledger? Turn on "
+                   "**Show technical details** in the sidebar.")
+        return
     t_over, t_xai, t_prov, t_custody, t_report, t_log = st.tabs([
-        ":material/space_dashboard: Overview",
+        ":material/lightbulb: What it means",
         ":material/psychology: Explainability",
         ":material/travel_explore: Provenance",
         ":material/verified_user: Chain of custody",
@@ -2236,8 +1716,9 @@ def triage_page():
     ui.page_header(
         "Haz", "Mem",
         "Explainable AI triage for Windows memory forensics",
-        [ui.pill("Models online" if rf_found else "Model missing", "good" if rf_found else "critical"),
-         ui.pill("Chain of custody: SHA-256", "accent", dot=False)],
+        ([ui.pill("Models online" if rf_found else "Model missing", "good" if rf_found else "critical"),
+          ui.pill("Chain of custody: SHA-256", "accent", dot=False)] if expert() else
+         [ui.pill("Ready" if rf_found else "AI model missing", "good" if rf_found else "critical")]),
     )
     stepper_slot = st.empty()
 
@@ -2248,12 +1729,12 @@ def triage_page():
         evidence, result = state["evidence"], state["result"]
         intact = bool(evidence) and evidence["chain"].is_intact
         steps = [
-            ("Case", "Open session", "done" if state["case"] else "active"),
-            ("Evidence", "Acquire & hash", "done" if evidence else ("active" if state["case"] else "pending")),
-            ("Integrity", "Verify hashes",
+            ("Case", "Start a case", "done" if state["case"] else "active"),
+            ("Evidence", "Add evidence", "done" if evidence else ("active" if state["case"] else "pending")),
+            ("Check", "Unchanged?",
              "blocked" if (evidence and not intact) or state["blocked"] else "done" if intact else "pending"),
-            ("Triage", "ML + XAI", "done" if result else ("active" if intact else "pending")),
-            ("Report", "Seal & export", "done" if state["pdf_ready"] else ("active" if result else "pending")),
+            ("Analyse", "Get a verdict", "done" if result else ("active" if intact else "pending")),
+            ("Report", "Download PDF", "done" if state["pdf_ready"] else ("active" if result else "pending")),
         ]
         with stepper_slot.container():
             ui.stepper(steps)
@@ -2303,7 +1784,9 @@ def case_reports(manifest: dict) -> list:
     reports = []
     for e in (manifest or {}).get("events", []):
         if e["stage"] == "Report":
-            path = os.path.join(OUTPUT_DIR, os.path.basename(e["artifact"]))
+            name = os.path.basename(e["artifact"])
+            path = next((p for p in (os.path.join(REPORTS_DIR, name), os.path.join(OUTPUT_DIR, name))
+                         if os.path.isfile(p)), os.path.join(REPORTS_DIR, name))   # older reports: outputs/
             exists = os.path.isfile(path)
             reports.append({"name": e["artifact"], "path": path, "time": e["timestamp"], "exists": exists,
                             "intact": exists and ei.hash_file(path)["sha256"] == e["sha256"]})
@@ -2438,6 +1921,7 @@ def start_session(user: dict):
         "login_ts": time.time(), "last_seen": time.time(), "login_local": ei.local_timestamp(),
     }
     st.session_state["appearance"] = (user.get("preferences") or {}).get("theme", "auto")
+    st.session_state["expert_mode"] = (user.get("preferences") or {}).get("view") == "expert"
     auth.audit("LOGIN_SUCCESS", user["username"], role=user["role"],
                session=st.session_state["auth"]["session_id"], client=admin_pages.client_ip())
 
@@ -2515,6 +1999,13 @@ def save_appearance():
         auth.set_preference(user["username"], "theme", choice)
 
 
+def save_view():
+    """Remember Simple / technical view on the account."""
+    user = st.session_state.get("auth_user") or {}
+    if user:
+        auth.set_preference(user["username"], "view", "expert" if st.session_state.get("expert_mode") else "simple")
+
+
 def render_user_panel(user: dict):
     with st.sidebar:
         ui.sidebar_brand()
@@ -2528,6 +2019,8 @@ def render_user_panel(user: dict):
                        f'{ui.esc(sess["login_local"][11:16])}</span></div>')
         ui.render_html('<div class="fx-side-label">Appearance</div>')
         ui.appearance_control("appearance", on_change=save_appearance, compact=True)
+        st.toggle("Show technical details", key="expert_mode", on_change=save_view,
+                  help="Hashes, custody ledger, explanation charts, data previews and engine status.")
         if st.button("Sign out", icon=":material/logout:", width="stretch", key="sign_out"):
             end_session("LOGOUT", "You have been signed out.")
             st.rerun()
@@ -2562,7 +2055,7 @@ def main():
         admin_pages.render_password_change(user, forced=True)
         return
 
-    PAGES["triage"] = st.Page(triage_page, title="Triage", icon=":material/biotech:", url_path="triage", default=True)
+    PAGES["triage"] = st.Page(triage_page, title="Analyse", icon=":material/biotech:", url_path="triage", default=True)
     pages = [PAGES["triage"],
              st.Page(cases_page, title="Cases", icon=":material/folder_shared:", url_path="cases"),
              st.Page(hash_checker.render_hash_checker_page, title="Hash checker", icon=":material/fingerprint:",
@@ -2570,7 +2063,7 @@ def main():
     if user["role"] == "admin":
         pages += [st.Page(admin_pages.render_audit_page, title="Audit log", icon=":material/policy:", url_path="audit"),
                   st.Page(admin_pages.render_users_page, title="Users", icon=":material/group:", url_path="users")]
-    pages += [st.Page(admin_pages.render_account_page, title="My account", icon=":material/person:",
+    pages += [st.Page(admin_pages.render_account_page, title="Account", icon=":material/person:",
                       url_path="account"),
               st.Page(help_page.render_help_page, title="Help", icon=":material/help:", url_path="help")]
     page = st.navigation(pages, position="top")
