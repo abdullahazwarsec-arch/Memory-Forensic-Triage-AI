@@ -46,6 +46,10 @@ FAQ = [
     ("I forgot my password / my account is locked.",
      f"Accounts unlock automatically after {auth.LOCKOUT_MINUTES} minutes. An administrator can also unlock it or "
      "set a temporary password on the **Users** page."),
+    ("Where are the hashes, charts and custody ledger?",
+     "The dashboard starts in a simple view. Turn on **Show technical details** in the sidebar to see evidence "
+     "hashes, data previews, the SHAP / LIME explanation charts, provenance, the custody ledger and engine status. "
+     "Your choice is saved to your account."),
     ("How do I check that a file is the right one?",
      "Open **Hash checker**. Add the memory image, raw dump or CSV (or its path for large dumps) and paste the "
      "expected SHA-256, SHA-1 or MD5 — or upload the .sha256 file / tool log. A **MATCH** proves the file is "
@@ -64,13 +68,12 @@ FAQ = [
 def render_help_page():
     ui.section("Help & guide", "Everything you need to analyse memory evidence with confidence.", "help")
 
-    st.markdown("##### Analyse evidence in five steps")
+    st.markdown("##### Analyse evidence in four steps")
     ui.guide_steps([
-        ("folder_open", "Open a case", "Enter a case number and who the findings are prepared for."),
-        ("travel_explore", "Record the origin", "Where the evidence came from, who collected it, when and how."),
-        ("upload_file", "Load evidence", "A sample profile, a Volatility CSV or a raw Windows memory dump."),
-        ("troubleshoot", "Analyse", "Pick a snapshot and press Analyse — you get a verdict and its reasons."),
-        ("picture_as_pdf", "Share the report", "Download the sealed PDF. Every step is hash-verified."),
+        ("rocket_launch", "Start a case", "Type a case number and who the findings are for."),
+        ("upload_file", "Add evidence", "Try a sample, or add a feature file (CSV) or a memory dump."),
+        ("troubleshoot", "Analyse", "Press Analyse evidence - you get a verdict in plain words."),
+        ("picture_as_pdf", "Download the report", "Get the sealed PDF to share with the recipient."),
     ])
 
     st.markdown("##### Reading the verdict")

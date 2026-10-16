@@ -57,7 +57,7 @@ def test_sign_in_out_and_case_attribution(fresh_users):
     at = sign_in(run_app(), "admin1", "wrongpassword1")
     assert "Invalid username or password" in texts(at)
     sign_in(at, "admin1", "Str0ngPassw0rd")
-    assert not at.exception and "Case session" in texts(at)
+    assert not at.exception and "Start a case" in texts(at)
     analyst = field(at, "Analyst (signed-in account)")
     assert analyst.value == "Alice Admin (admin1)" and analyst.disabled
     button(at, "Sign out").click().run()
@@ -74,7 +74,7 @@ def test_forced_password_change_and_revocation(fresh_users):
     field(at, "New password").set_value("Analyst2026Pass")
     field(at, "Repeat new password").set_value("Analyst2026Pass")
     button(at, "Change password").click().run()
-    assert "Case session" in texts(at) and at.session_state["auth_user"]["role"] == "analyst"
+    assert "Start a case" in texts(at) and at.session_state["auth_user"]["role"] == "analyst"
     auth.set_active("bob", False, by="admin1")
     at.run()
     assert "account was disabled" in texts(at)
@@ -115,9 +115,9 @@ def test_full_triage_run_seals_report(fresh_users):
     fresh_users.create_user("admin1", "Alice Admin", "admin", "Str0ngPassw0rd", "test", must_change_password=False)
     at = sign_in(run_app(), "admin1", "Str0ngPassw0rd")
     field(at, "Recipient *").set_value("DCI Test Recipient")
-    button(at, "Open case session").click().run()
-    assert "Input validation passed" in texts(at)
-    button(at, "Analyse snapshot").click().run()
+    button(at, "Start case").click().run()
+    assert "Evidence checked" in texts(at)
+    button(at, "Analyse evidence").click().run()
     assert not at.exception
     result = at.session_state["current_triage"]
     assert result["risk"] in ("NORMAL", "SUSPICIOUS", "HIGH RISK")
@@ -137,3 +137,17 @@ def test_appearance_preference_is_saved(fresh_users):
         auth.set_preference("bob", "theme", "neon")
     at = sign_in(run_app(), "bob", "Analyst2026Pass")
     assert at.session_state["appearance"] == "light"
+
+
+def test_simple_view_by_default_and_technical_switch(fresh_users):
+    auth = fresh_users
+    auth.create_user("bob", "Bob Analyst", "analyst", "Analyst2026Pass", "test", must_change_password=False)
+    at = sign_in(run_app(), "bob", "Analyst2026Pass")
+    assert at.session_state["expert_mode"] is False
+    field(at, "Recipient *").set_value("Test Recipient")
+    button(at, "Start case").click().run()
+    sections = lambda: [e.label for e in list(at.expander) + list(at.status)]   # icon expanders are "status" blocks
+    assert "Preview evidence data" not in sections()                                # technical item hidden
+    next(t for t in at.toggle if t.label == "Show technical details").set_value(True).run()
+    assert "Preview evidence data" in sections()
+    assert auth.get_user("bob")["preferences"]["view"] == "expert"

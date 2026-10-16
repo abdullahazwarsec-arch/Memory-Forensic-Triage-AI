@@ -345,7 +345,7 @@ def build_document():
         ("Models & explainability (app.py)", "Random Forest probability and risk tier, Isolation Forest zero-day check, SHAP (TreeExplainer) global drivers and LIME local rules, shown as diverging charts and plain-English driver cards."),
         ("Sealed PDF report (app.py)", "ReportLab dossier with provenance, verdict, SHAP/LIME tables, response actions and the full custody ledger; its SHA-256 is recorded in the ledger, the audit log and a .sha256 sidecar."),
         ("Tamper-evident audit log (hazmem/audit_log.py)", "Every sign-in, account change, case event and verdict is written as an HMAC-chained line under a file lock; edits, deletions, truncation and duplicates are detected and shown on the administrator's Audit log page."),
-        ("Usability (help_page.py, assistant.py, ui_theme.py)", "Cases page to reopen past work, Help page with glossary and FAQ, an offline help assistant that explains the current result, and the Emerald theme with an interactive background."),
+        ("Usability (help_page.py, assistant.py, ui_theme.py, knowledge.py)", "A simple view by default (plain-English result, everyday next steps) with a Show technical details switch for hashes, ledger and SHAP/LIME; Cases page, Help page with glossary and FAQ, an offline help assistant, the Royal Purple theme with Light/Dark/Auto modes and an interactive background."),
     ]
     for title, desc in app_sections:
         p = doc.add_paragraph()
@@ -437,9 +437,9 @@ def build_document():
     
     demo_steps = [
         ("Step 1: Launch & sign in", "Double-click run_app.bat (or run: streamlit run app.py). Sign in as an analyst — point out the lockout and that every sign-in is audited."),
-        ("Step 2: Open a case", "Enter the case number and who the findings are prepared for (e.g. an investigating officer, purpose: Incident response). Note that the analyst is the signed-in account, not typed."),
-        ("Step 3: Record provenance & load evidence", "Show the Evidence origin panel (device, custodian, collector, tool, acquisition hash). Choose Sample profile → clean_system_baseline.csv and show the green input-validation check."),
-        ("Step 4: Normal baseline", "Press Analyse snapshot. Show the NORMAL verdict and that SHAP drivers push towards benign."),
+        ("Step 2: Start a case", "Enter the case number and the recipient (e.g. an investigating officer), press Start case. Note that the analyst is the signed-in account, not typed."),
+        ("Step 3: Add evidence", "Show where it came from (device, collector, optional expected hash). Choose Try a sample → clean_system_baseline.csv and point out 'Evidence checked'."),
+        ("Step 4: Normal baseline", "Press Analyse evidence. Show the plain-English 'Looks clean' result, then switch on Show technical details to show SHAP drivers pushing towards benign."),
         ("Step 5: Active ransomware", "Switch to fresh_aggressive_ransomware.csv and analyse again. Show the higher risk, the zero-day anomaly flag and the plain-English driver cards; ask the Assistant “explain my result”."),
         ("Step 6: Explainability", "Open the Explainability tab: SHAP shows each feature's contribution; LIME gives independent local rules. Agreement between them increases trust."),
         ("Step 7: Provenance & chain of custody", "Open the Provenance tab (where it came from / who it is for), then Chain of custody: every checkpoint MATCHes the acquisition hash and the ledger is HMAC-linked."),

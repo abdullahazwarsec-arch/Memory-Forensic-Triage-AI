@@ -209,7 +209,7 @@ def conversion_checks(report: dict, csv_sha256: str, csv_name: str = "", dump_sh
 def _render_conversion_check():
     st.markdown("Prove that a feature **CSV** is exactly the one HazMem produced from a **memory image**, and that the "
                 "image was not changed by the conversion. Use the files saved with every extraction "
-                "(download them on the Triage page after *Extract features*).")
+                "(download them on the Analyse page after *Extract features*).")
     c1, c2 = st.columns(2)
     with c1:
         report_file = st.file_uploader("Extraction report (extraction_report.json)", type=["json"], key="cv_report")

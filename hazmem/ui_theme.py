@@ -1,10 +1,10 @@
 """
-"Emerald Forensics" UI theme & components for the Streamlit dashboard.
+"Royal Purple" UI theme & components for the Streamlit dashboard.
 
 Green-black canvas with an interactive "toxic atmosphere" background
 (assets/background.js: rising spores with mouse parallax, cursor links, gas clouds,
 a turning biohazard watermark, click bursts), translucent glass cards, tight high-contrast typography
-(Plus Jakarta Sans), pill-shaped buttons/tabs in emerald, and macOS-style
+(Poppins headings, Inter text), pill-shaped buttons/tabs with a violet-to-pink gradient, and macOS-style
 app icons: squircle tiles (superellipse mask) with a vertical gradient, glossy
 sheen, drop shadow and a filled glyph. Monospace is kept for evidence data (hashes, metrics).
 All HTML helpers flatten their markup so Markdown never turns indented lines
@@ -26,28 +26,28 @@ import streamlit as st
 # below). The active set follows Streamlit's theme: assets/background.js reads
 # the theme Streamlit applied and sets <html data-theme="light|dark">.
 DARK = {
-    "bg": "#070d0b", "surface": "#0f1a16", "surface-2": "#14221d", "border": "#1c2b25", "border-hi": "#28403a",
-    "text": "#e3f2ec", "text-2": "#a9c1b8", "muted": "#7f978e",
-    "accent": "#10b981", "accent-deep": "#059669", "accent-soft": "#6ee7b7", "lime": "#a3e635", "ink": "#03140d",
-    "good": "#2dd4bf", "warning": "#f5b83d", "critical": "#f87171",
-    "good-rgb": "45, 212, 191", "warning-rgb": "245, 184, 61", "critical-rgb": "248, 113, 113", "accent-rgb": "16, 185, 129",
+    "bg": "#100b1f", "surface": "#1a1330", "surface-2": "#221a3d", "border": "#2a2148", "border-hi": "#3b2f63",
+    "text": "#eeeafb", "text-2": "#c3bae3", "muted": "#9a90bf",
+    "accent": "#8b5cf6", "accent-deep": "#7c3aed", "accent-soft": "#c4b5fd", "lime": "#ec4899", "ink": "#ffffff",
+    "good": "#4ade80", "warning": "#fbbf24", "critical": "#f87171",
+    "good-rgb": "74, 222, 128", "warning-rgb": "251, 191, 36", "critical-rgb": "248, 113, 113", "accent-rgb": "139, 92, 246",
     "fill": "255, 255, 255", "fill-k": "1", "line": "255, 255, 255", "shade": "0, 0, 0", "shade-k": "1",
-    "input-bg": "#0b1512", "input-border": "#1f332c", "dashed": "#2c4a40", "scroll": "#24392f",
-    "tile-1": "#2c4a40", "tile-2": "#13221d", "gauge-1": "#11201b", "gauge-2": "#050a08",
-    "header-bg": "rgba(0, 0, 0, 0.72)", "sidebar-1": "rgba(7, 14, 12, 0.86)", "sidebar-2": "rgba(0, 0, 0, 0.9)",
-    "popover-bg": "rgba(11, 21, 18, 0.96)",
+    "input-bg": "#150f29", "input-border": "#34295a", "dashed": "#4c3f7a", "scroll": "#3b2f63",
+    "tile-1": "#3b2f63", "tile-2": "#1e163a", "gauge-1": "#1e163a", "gauge-2": "#0c0818",
+    "header-bg": "rgba(16, 11, 31, 0.78)", "sidebar-1": "rgba(22, 15, 42, 0.88)", "sidebar-2": "rgba(12, 8, 24, 0.92)",
+    "popover-bg": "rgba(26, 19, 48, 0.97)",
 }
 LIGHT = {
-    "bg": "#f3f8f5", "surface": "#ffffff", "surface-2": "#e9f2ed", "border": "#cfe0d7", "border-hi": "#b3cbbf",
-    "text": "#0f1f19", "text-2": "#2f4a3f", "muted": "#566e65",
-    "accent": "#059669", "accent-deep": "#047857", "accent-soft": "#047857", "lime": "#4d7c0f", "ink": "#03140d",
-    "good": "#0f766e", "warning": "#b45309", "critical": "#dc2626",
-    "good-rgb": "15, 118, 110", "warning-rgb": "180, 83, 9", "critical-rgb": "220, 38, 38", "accent-rgb": "5, 150, 105",
-    "fill": "255, 255, 255", "fill-k": "15", "line": "15, 31, 25", "shade": "15, 31, 25", "shade-k": "0.35",
-    "input-bg": "#ffffff", "input-border": "#c3d8cd", "dashed": "#9fbcae", "scroll": "#b3cbbf",
-    "tile-1": "#ffffff", "tile-2": "#e3eee8", "gauge-1": "#ffffff", "gauge-2": "#e9f2ed",
-    "header-bg": "rgba(243, 248, 245, 0.82)", "sidebar-1": "rgba(255, 255, 255, 0.82)",
-    "sidebar-2": "rgba(233, 242, 237, 0.92)", "popover-bg": "rgba(255, 255, 255, 0.97)",
+    "bg": "#f8f6ff", "surface": "#ffffff", "surface-2": "#f1ecff", "border": "#e3dbfa", "border-hi": "#cfc2f5",
+    "text": "#1e1537", "text-2": "#463a66", "muted": "#6b5f8c",
+    "accent": "#7c3aed", "accent-deep": "#6d28d9", "accent-soft": "#6d28d9", "lime": "#db2777", "ink": "#ffffff",
+    "good": "#15803d", "warning": "#b45309", "critical": "#dc2626",
+    "good-rgb": "21, 128, 61", "warning-rgb": "180, 83, 9", "critical-rgb": "220, 38, 38", "accent-rgb": "124, 58, 237",
+    "fill": "255, 255, 255", "fill-k": "15", "line": "30, 21, 55", "shade": "30, 21, 55", "shade-k": "0.35",
+    "input-bg": "#ffffff", "input-border": "#dcd2f7", "dashed": "#b9a8ee", "scroll": "#cfc2f5",
+    "tile-1": "#ffffff", "tile-2": "#f1ecff", "gauge-1": "#ffffff", "gauge-2": "#f1ecff",
+    "header-bg": "rgba(248, 246, 255, 0.85)", "sidebar-1": "rgba(255, 255, 255, 0.85)",
+    "sidebar-2": "rgba(241, 236, 255, 0.92)", "popover-bg": "rgba(255, 255, 255, 0.97)",
 }
 
 
@@ -63,7 +63,7 @@ ACCENT, ACCENT_DEEP, ACCENT_SOFT, LIME, INK = "var(--accent)", "var(--accent-dee
 GOOD, WARNING, CRITICAL = "var(--good)", "var(--warning)", "var(--critical)"
 
 # Charts are drawn by Vega (no CSS variables): mid-tone colours readable on both themes.
-CHART_TEXT, CHART_MUTED, CHART_GRID = "#6b8279", "#7d918a", "rgba(107, 130, 121, 0.28)"
+CHART_TEXT, CHART_MUTED, CHART_GRID = "#7a6f9b", "#8b81ab", "rgba(122, 111, 155, 0.28)"
 TOWARD_MALWARE = "#e66767"   # CVD-safe diverging pair, >=3:1 on both backgrounds
 TOWARD_BENIGN  = "#3987e5"
 
@@ -73,7 +73,7 @@ TONES = {
 }
 TONES["neutral"] = ("var(--text-2)", "rgba(var(--line), 0.05)", "rgba(var(--line), 0.14)")
 
-GRADIENT = "linear-gradient(180deg, #a7f3d0 0%, #6ee7b7 30%, #34d399 60%, #059669 100%)"
+GRADIENT = "linear-gradient(135deg, #a78bfa 0%, #8b5cf6 35%, #a855f7 65%, #ec4899 100%)"
 
 
 def _squircle_mask() -> str:
@@ -114,7 +114,7 @@ def _glyph(value: str, size: str = None) -> str:
 
 
 def mac_icon(name: str, size: int = 42) -> str:
-    """macOS-style app icon: emerald squircle tile with a filled glyph."""
+    """macOS-style app icon: violet squircle tile with a filled glyph."""
     glyph = icon(name) if re.fullmatch(r"[a-z0-9_]+", name or "") else f'<span class="fx-emoji">{esc(name)}</span>'
     return f'<span class="fx-mac" style="--s:{size}px"><span class="fx-mac-tile">{glyph}</span></span>'
 
@@ -124,7 +124,7 @@ def inject_theme():
     st.markdown(
         f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0&display=block');
 
 :root {{
@@ -134,7 +134,8 @@ def inject_theme():
   --glass: rgba(var(--fill), calc(0.025 * var(--fill-k))); --glass-border: rgba(var(--line), 0.09);
   --radius: 20px; --radius-sm: 14px;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
-  --sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --display: 'Poppins', 'Inter', system-ui, sans-serif;
 }}
 html[data-theme="light"] {{ {_css_vars(LIGHT)} color-scheme: light; }}
 html[data-theme="light"] .fx-logo-img {{ filter: drop-shadow(0 6px 12px rgba(15, 31, 25, 0.22)); }}
@@ -159,11 +160,11 @@ html, body {{ background: var(--bg) !important; }}
 /* Spans are deliberately excluded: Streamlit renders Material icons as spans */
 html, body, .stApp, p, li, label, div, input, textarea, button {{ font-family: var(--sans) !important; }}
 .stApp p, .stApp li {{ font-size: 1rem; line-height: 1.6; }}
-.stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5 {{ font-family: var(--sans) !important; letter-spacing: -0.03em !important; font-weight: 800 !important; }}
+.stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5 {{ font-family: var(--display) !important; letter-spacing: -0.005em !important; font-weight: 800 !important; }}
 code, pre, .mono {{ font-family: var(--mono) !important; }}
 :not(pre) > code {{
-  background: rgba(16, 185, 129, 0.08) !important; color: var(--accent-soft) !important;
-  border: 1px solid rgba(16, 185, 129, 0.18) !important; border-radius: 7px !important;
+  background: rgba(var(--accent-rgb), 0.08) !important; color: var(--accent-soft) !important;
+  border: 1px solid rgba(var(--accent-rgb), 0.18) !important; border-radius: 7px !important;
   padding: 0.1rem 0.42rem !important; font-size: 0.86em !important; overflow-wrap: anywhere;
 }}
 .fx-icon {{
@@ -184,7 +185,7 @@ code, pre, .mono {{ font-family: var(--mono) !important; }}
   -webkit-mask: var(--squircle) center / 100% 100% no-repeat; mask: var(--squircle) center / 100% 100% no-repeat;
   background: var(--gradient); color: var(--ink);
   box-shadow: inset 0 calc(var(--s, 42px) * 0.04) 0 rgba(255, 255, 255, 0.9),
-              inset 0 calc(var(--s, 42px) * -0.08) calc(var(--s, 42px) * 0.14) rgba(2, 60, 40, 0.28);
+              inset 0 calc(var(--s, 42px) * -0.08) calc(var(--s, 42px) * 0.14) rgba(46, 16, 101, 0.28);
 }}
 .fx-mac-tile::before {{
   content: ""; position: absolute; inset: 0;
@@ -210,7 +211,7 @@ code, pre, .mono {{ font-family: var(--mono) !important; }}
 }}
 [data-testid="stTopNavLink"][aria-current="page"] [data-testid="stIconMaterial"] {{
   background: var(--gradient); color: var(--ink) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 3px 10px -2px rgba(16, 185, 129, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 3px 10px -2px rgba(var(--accent-rgb), 0.55);
 }}
 
 [data-testid="stMainBlockContainer"], .block-container {{ padding-top: 5.4rem !important; padding-bottom: 4rem !important; max-width: 1320px !important; }}
@@ -227,7 +228,7 @@ header[data-testid="stHeader"] {{
 [data-testid="stTopNavLink"] span {{ color: var(--text-2) !important; font-weight: 600 !important; }}
 [data-testid="stTopNavLink"]:hover {{ background: rgba(var(--fill), calc(0.05 * var(--fill-k))) !important; border-color: rgba(var(--line), 0.10); }}
 [data-testid="stTopNavLink"][aria-current="page"] {{
-  background: rgba(16, 185, 129, 0.12) !important; border-color: rgba(16, 185, 129, 0.40);
+  background: rgba(var(--accent-rgb), 0.12) !important; border-color: rgba(var(--accent-rgb), 0.40);
 }}
 [data-testid="stTopNavLink"][aria-current="page"] span {{ color: var(--accent) !important; }}
 
@@ -246,23 +247,24 @@ header[data-testid="stHeader"] {{
 /* ── Buttons: pill shape, gold gradient primary, glass secondary ── */
 .stButton > button, .stDownloadButton > button, [data-testid="stFormSubmitButton"] > button {{
   min-height: 2.95rem !important; border-radius: 999px !important; padding: 0 1.1rem !important; white-space: nowrap;
-  font-size: 0.98rem !important; font-weight: 700 !important; letter-spacing: -0.01em;
-  transition: transform .18s ease, box-shadow .25s ease, border-color .2s ease, background .2s ease, color .2s ease !important;
+  font-size: 0.98rem !important; font-weight: 700 !important; letter-spacing: 0;
+  transition: transform .18s ease, box-shadow .25s ease, border-color .2s ease, background-position .45s ease, color .2s ease !important;
 }}
 .stButton > button p, .stDownloadButton > button p, [data-testid="stFormSubmitButton"] > button p {{
   font-size: 0.98rem !important; font-weight: 700 !important;
 }}
 .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"],
 [data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"] {{
-  background: var(--gradient) !important; border: 1px solid rgba(110, 231, 183, 0.55) !important; color: var(--ink) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 26px -10px rgba(16, 185, 129, 0.75) !important;
+  background: var(--gradient) !important; background-size: 130% 130% !important; background-position: 0% 50% !important;
+  border: 1px solid rgba(196, 181, 253, 0.55) !important; color: var(--ink) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 26px -10px rgba(var(--accent-rgb), 0.75) !important;
 }}
 .stButton > button[kind="primary"] *, .stDownloadButton > button[kind="primary"] *,
 [data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"] * {{ color: var(--ink) !important; }}
 .stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover,
 [data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"]:hover {{
-  transform: translateY(-2px); filter: brightness(1.05);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 34px -10px rgba(16, 185, 129, 0.9) !important;
+  transform: translateY(-2px); filter: brightness(1.06); background-position: 100% 50% !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 34px -10px rgba(var(--accent-rgb), 0.9) !important;
 }}
 .stButton > button:not([kind="primary"]), .stDownloadButton > button:not([kind="primary"]),
 [data-testid="stFormSubmitButton"] > button:not([kind="primaryFormSubmit"]) {{
@@ -270,7 +272,7 @@ header[data-testid="stHeader"] {{
 }}
 .stButton > button:not([kind="primary"]):hover, .stDownloadButton > button:not([kind="primary"]):hover,
 [data-testid="stFormSubmitButton"] > button:not([kind="primaryFormSubmit"]):hover {{
-  border-color: var(--accent) !important; background: rgba(16, 185, 129, 0.07) !important; transform: translateY(-2px);
+  border-color: var(--accent) !important; background: rgba(var(--accent-rgb), 0.07) !important; transform: translateY(-2px);
 }}
 .stButton > button:not([kind="primary"]):hover *, .stDownloadButton > button:not([kind="primary"]):hover * {{ color: var(--accent) !important; }}
 .stButton > button:disabled {{ opacity: 0.4 !important; transform: none !important; }}
@@ -290,12 +292,12 @@ div[data-baseweb="select"] > div, [data-testid="stTextInput"] input, [data-testi
 [data-testid="stTextInput"] div:focus-within {{ border-color: var(--accent) !important; }}
 div[data-baseweb="popover"] ul[role="listbox"] {{ background: var(--input-bg) !important; border: 1px solid var(--input-border) !important; border-radius: 12px !important; }}
 li[role="option"] {{ font-size: 0.97rem !important; }}
-li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(16, 185, 129, 0.12) !important; }}
+li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(var(--accent-rgb), 0.12) !important; }}
 [data-testid="stFileUploader"] section {{
   background: var(--glass) !important; border: 1.5px dashed var(--dashed) !important; border-radius: var(--radius) !important;
   transition: border-color .2s ease, background .2s ease;
 }}
-[data-testid="stFileUploader"] section:hover {{ border-color: var(--accent) !important; background: rgba(16, 185, 129, 0.04) !important; }}
+[data-testid="stFileUploader"] section:hover {{ border-color: var(--accent) !important; background: rgba(var(--accent-rgb), 0.04) !important; }}
 
 /* ── Tabs: pill track ── */
 [data-testid="stTabs"] [role="tablist"] {{
@@ -311,7 +313,7 @@ li[role="option"]:hover, li[aria-selected="true"] {{ background: rgba(16, 185, 1
 [data-testid="stTabs"] [role="tab"] p {{ font-size: 0.97rem !important; font-weight: 700 !important; color: var(--muted) !important; margin: 0 !important; }}
 [data-testid="stTabs"] [role="tab"]:hover {{ background: rgba(var(--fill), calc(0.05 * var(--fill-k))); }}
 [data-testid="stTabs"] [role="tab"]:hover p {{ color: var(--text) !important; }}
-[data-testid="stTabs"] [role="tab"][aria-selected="true"] {{ background: var(--gradient) !important; box-shadow: 0 6px 18px -8px rgba(16, 185, 129, 0.8); }}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] {{ background: var(--gradient) !important; box-shadow: 0 6px 18px -8px rgba(var(--accent-rgb), 0.8); }}
 [data-testid="stTabs"] [role="tab"][aria-selected="true"] p {{ color: var(--ink) !important; }}
 [data-testid="stTabPanel"] {{ padding-top: 1rem; }}
 
@@ -340,21 +342,21 @@ footer {{ visibility: hidden !important; }}
   position: relative; overflow: hidden;
   display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
   padding: 1.5rem 1.7rem; margin-bottom: 1.3rem; border-radius: 24px;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.10), rgba(var(--fill), calc(0.02 * var(--fill-k))) 50%);
-  border: 1px solid rgba(16, 185, 129, 0.18);
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.10), rgba(var(--fill), calc(0.02 * var(--fill-k))) 50%);
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
 }}
 .fx-header::after {{
   content: ""; position: absolute; right: -80px; top: -120px; width: 320px; height: 320px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(16, 185, 129, 0.18), transparent 65%); pointer-events: none;
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.18), transparent 65%); pointer-events: none;
 }}
 .fx-brand {{ display: flex; align-items: center; gap: 1rem; position: relative; z-index: 1; }}
 .fx-logo-img {{
-  flex: 0 0 auto; display: block; filter: drop-shadow(0 6px 14px rgba(var(--shade), calc(0.65 * var(--shade-k)))) drop-shadow(0 0 18px rgba(74, 222, 128, 0.28));
+  flex: 0 0 auto; display: block; filter: drop-shadow(0 6px 14px rgba(var(--shade), calc(0.65 * var(--shade-k)))) drop-shadow(0 0 18px rgba(167, 139, 250, 0.28));
   transition: transform .3s cubic-bezier(.2, .9, .3, 1.4), filter .3s ease;
 }}
 .fx-logo-img:hover {{ transform: rotate(-6deg) scale(1.06); filter: drop-shadow(0 8px 16px rgba(0,0,0,.65)) drop-shadow(0 0 26px rgba(74,222,128,.55)); }}
 .fx-eyebrow {{ font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; color: var(--accent); }}
-.fx-title {{ font-size: 1.9rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text); line-height: 1.1; }}
+.fx-title {{ font-family: var(--display) !important; font-size: 1.9rem; font-weight: 800; letter-spacing: -0.005em; color: var(--text); line-height: 1.1; }}
 .fx-title span {{ background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }}
 .fx-sub {{ font-size: 0.97rem; color: var(--muted); margin-top: 0.2rem; }}
 .fx-chips {{ display: flex; gap: 0.5rem; flex-wrap: wrap; position: relative; z-index: 1; }}
@@ -376,17 +378,17 @@ footer {{ visibility: hidden !important; }}
   font-weight: 800; font-size: 0.92rem; border: 1px solid var(--border-hi); color: var(--muted); background: var(--input-bg);
 }}
 .fx-step-num .fx-icon {{ font-size: 1.15rem; font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 20; }}
-.fx-step-label {{ font-weight: 700; font-size: 0.96rem; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; }}
+.fx-step-label {{ font-weight: 700; font-size: 0.96rem; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; }}
 .fx-step-sub {{ font-size: 0.78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-.fx-step.done .fx-step-num {{ background: rgba(74, 222, 128, 0.12); border-color: rgba(74, 222, 128, 0.5); color: var(--good); }}
-.fx-step.active {{ border-color: rgba(16, 185, 129, 0.5); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.06), 0 10px 30px -18px rgba(16, 185, 129, 0.8); }}
+.fx-step.done .fx-step-num {{ background: rgba(167, 139, 250, 0.12); border-color: rgba(167, 139, 250, 0.5); color: var(--good); }}
+.fx-step.active {{ border-color: rgba(var(--accent-rgb), 0.5); box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.06), 0 10px 30px -18px rgba(var(--accent-rgb), 0.8); }}
 .fx-step.active .fx-step-num {{ background: var(--gradient); border-color: transparent; color: var(--ink); }}
 .fx-step.active .fx-step-label {{ color: var(--text); }}
 .fx-step.blocked {{ border-color: rgba(var(--critical-rgb), 0.45); }}
 .fx-step.blocked .fx-step-num {{ background: rgba(var(--critical-rgb), 0.14); border-color: var(--critical); color: var(--critical); }}
 
 .fx-section {{ display: flex; align-items: center; gap: 0.85rem; margin: 2.2rem 0 1rem 0; }}
-.fx-section-title {{ font-size: 1.5rem; font-weight: 800; color: var(--text); letter-spacing: -0.035em; line-height: 1.15; }}
+.fx-section-title {{ font-family: var(--display) !important; font-size: 1.5rem; font-weight: 800; color: var(--text); letter-spacing: -0.005em; line-height: 1.15; }}
 .fx-section-sub {{ font-size: 0.95rem; color: var(--muted); margin-top: 0.12rem; }}
 
 .fx-kpis {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.8rem; }}
@@ -396,13 +398,13 @@ footer {{ visibility: hidden !important; }}
   border: 1px solid var(--glass-border); border-radius: 18px; padding: 1rem 1.15rem;
   transition: border-color .2s ease, transform .2s ease;
 }}
-.fx-kpi:hover {{ border-color: rgba(16, 185, 129, 0.35); }}
+.fx-kpi:hover {{ border-color: rgba(var(--accent-rgb), 0.35); }}
 .fx-kpi::before {{
   content: ""; position: absolute; left: 1.15rem; right: 1.15rem; top: 0; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.45), transparent);
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.45), transparent);
 }}
 .fx-kpi-label {{ font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }}
-.fx-kpi-value {{ font-size: 1.45rem; font-weight: 800; color: var(--text); margin-top: 0.3rem; overflow-wrap: anywhere; line-height: 1.2; letter-spacing: -0.03em; }}
+.fx-kpi-value {{ font-family: var(--display) !important; font-size: 1.45rem; font-weight: 800; color: var(--text); margin-top: 0.3rem; overflow-wrap: anywhere; line-height: 1.2; letter-spacing: -0.005em; }}
 .fx-kpi-value.mono {{ font-family: var(--mono) !important; font-size: 0.96rem; word-break: break-all; letter-spacing: 0; font-weight: 600; color: var(--accent-soft); }}
 .fx-kpi-value .fx-icon {{ font-size: 1.15em; margin-right: 0.15rem; vertical-align: -0.2em; font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }}
 .fx-kpi-value.small {{ font-size: 1.05rem; overflow-wrap: anywhere; letter-spacing: -0.015em; }}
@@ -416,11 +418,11 @@ footer {{ visibility: hidden !important; }}
   width: 154px; height: 154px; border-radius: 50%; background: radial-gradient(circle at 50% 30%, var(--gauge-1), var(--gauge-2));
   display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid var(--border);
 }}
-.fx-gauge-value {{ font-size: 2.35rem; font-weight: 800; letter-spacing: -0.05em; line-height: 1; }}
+.fx-gauge-value {{ font-family: var(--display) !important; font-size: 2.35rem; font-weight: 800; letter-spacing: -0.005em; line-height: 1; }}
 .fx-gauge-label {{ font-size: 0.76rem; color: var(--muted); margin-top: 0.4rem; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }}
 .fx-banner {{ display: flex; align-items: flex-start; gap: 0.9rem; padding: 1rem 1.2rem; border-radius: var(--radius-sm); margin-top: 0.9rem; }}
 .fx-banner-icon {{ font-size: 1.5rem; line-height: 1; }}
-.fx-banner-title {{ font-size: 1.08rem; font-weight: 800; letter-spacing: -0.02em; }}
+.fx-banner-title {{ font-family: var(--display) !important; font-size: 1.08rem; font-weight: 800; letter-spacing: -0.005em; }}
 .fx-banner-text {{ font-size: 0.96rem; color: var(--text-2); margin-top: 0.15rem; }}
 
 .fx-hash {{ margin-top: 0.85rem; }}
@@ -429,7 +431,7 @@ footer {{ visibility: hidden !important; }}
 
 .fx-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 0.9rem; }}
 .fx-driver {{ display: flex; flex-direction: column; gap: 0.45rem; height: 100%; box-sizing: border-box; }}
-.fx-driver-title {{ font-size: 1.06rem; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }}
+.fx-driver-title {{ font-family: var(--display) !important; font-size: 1.06rem; font-weight: 800; color: var(--text); letter-spacing: -0.005em; }}
 .fx-driver-text {{ font-size: 0.95rem; color: var(--text-2); line-height: 1.5; }}
 .fx-driver-meta {{ margin-top: auto; padding-top: 0.6rem; border-top: 1px solid var(--glass-border); font-size: 0.88rem; color: var(--muted); }}
 
@@ -437,13 +439,13 @@ footer {{ visibility: hidden !important; }}
   display: flex; align-items: center; gap: 0.85rem; padding: 0.8rem 1.1rem; border-radius: var(--radius-sm);
   background: var(--glass); border: 1px solid var(--glass-border); margin-bottom: 0.55rem; transition: border-color .2s ease;
 }}
-.fx-action:hover {{ border-color: rgba(16, 185, 129, 0.3); }}
+.fx-action:hover {{ border-color: rgba(var(--accent-rgb), 0.3); }}
 .fx-action-num {{ flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 0.88rem; }}
 .fx-action-text {{ font-size: 0.99rem; color: var(--text); }}
 
 .fx-empty {{ text-align: center; padding: 2.8rem 1.5rem; }}
 .fx-empty-icon {{ display: flex; justify-content: center; margin-bottom: 1rem; }}
-.fx-empty-title {{ font-size: 1.25rem; font-weight: 800; color: var(--text); letter-spacing: -0.03em; }}
+.fx-empty-title {{ font-family: var(--display) !important; font-size: 1.25rem; font-weight: 800; color: var(--text); letter-spacing: -0.005em; }}
 .fx-empty-text {{ font-size: 0.97rem; color: var(--muted); max-width: 560px; margin: 0.4rem auto 0; }}
 
 .fx-side-brand {{ display: flex; align-items: center; gap: 0.75rem; }}
@@ -454,7 +456,7 @@ footer {{ visibility: hidden !important; }}
   font-size: 0.9rem; color: var(--text-2);
 }}
 .fx-prov-head {{ display: flex; align-items: center; gap: 0.75rem; margin: 0.3rem 0 0.85rem; }}
-.fx-prov-title {{ font-weight: 800; font-size: 1.12rem; letter-spacing: -0.025em; color: var(--text); }}
+.fx-prov-title {{ font-family: var(--display) !important; font-weight: 800; font-size: 1.12rem; letter-spacing: -0.005em; color: var(--text); }}
 .fx-prov-sub {{ color: var(--muted); font-size: 0.85rem; }}
 .fx-prov-strip {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; margin: -0.2rem 0 0.9rem; }}
 .fx-prov-strip > div {{
@@ -471,16 +473,16 @@ footer {{ visibility: hidden !important; }}
   background: linear-gradient(180deg, rgba(var(--fill), calc(0.045 * var(--fill-k))), rgba(var(--fill), calc(0.012 * var(--fill-k))));
   border: 1px solid var(--glass-border); transition: transform .2s ease, border-color .2s ease;
 }}
-.fx-guide-card:hover {{ transform: translateY(-3px); border-color: rgba(16, 185, 129, 0.45); }}
+.fx-guide-card:hover {{ transform: translateY(-3px); border-color: rgba(var(--accent-rgb), 0.45); }}
 .fx-guide-num {{ position: absolute; top: 1rem; right: 1.1rem; font-weight: 800; font-size: 0.78rem; color: var(--muted); letter-spacing: 0.12em; }}
-.fx-guide-title {{ font-weight: 800; font-size: 1.05rem; margin-top: 0.85rem; letter-spacing: -0.02em; color: var(--text); }}
+.fx-guide-title {{ font-family: var(--display) !important; font-weight: 800; font-size: 1.05rem; margin-top: 0.85rem; letter-spacing: -0.005em; color: var(--text); }}
 .fx-guide-text {{ color: var(--text-2); font-size: 0.93rem; margin-top: 0.25rem; line-height: 1.5; }}
 /* ── Floating assistant ── */
 .st-key-assistant_fab {{ position: fixed !important; right: 26px; bottom: 24px; z-index: 999990; width: auto !important; }}
 .st-key-assistant_fab [data-testid="stPopover"] > div > button, .st-key-assistant_fab button {{
   min-height: 3.2rem !important; padding: 0 1.3rem !important; border-radius: 999px !important;
-  background: var(--gradient) !important; color: var(--ink) !important; border: 1px solid rgba(167, 243, 208, 0.6) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 34px -10px rgba(16, 185, 129, 0.85) !important;
+  background: var(--gradient) !important; color: var(--ink) !important; border: 1px solid rgba(196, 181, 253, 0.6) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 14px 34px -10px rgba(var(--accent-rgb), 0.85) !important;
   animation: fx-asst-pulse 3.2s ease-in-out infinite;
 }}
 .st-key-assistant_fab button * {{ color: var(--ink) !important; font-weight: 800 !important; }}
@@ -491,7 +493,7 @@ footer {{ visibility: hidden !important; }}
 [data-testid="stPopoverBody"]:has(.fx-asst-head) {{
   width: min(440px, calc(100vw - 32px)) !important; max-width: none !important;
   background: var(--popover-bg) !important; backdrop-filter: blur(16px);
-  border: 1px solid rgba(16, 185, 129, 0.35) !important; border-radius: 20px !important;
+  border: 1px solid rgba(var(--accent-rgb), 0.35) !important; border-radius: 20px !important;
 }}
 [data-testid="stPopoverBody"]:has(.fx-asst-head) button {{ animation: none; }}
 [data-testid="stPopoverBody"]:has(.fx-asst-head) [data-testid="stButtonGroup"] button {{
@@ -500,7 +502,7 @@ footer {{ visibility: hidden !important; }}
 [data-testid="stPopoverBody"]:has(.fx-asst-head) [data-testid="stButtonGroup"] button p {{ font-size: 0.82rem !important; }}
 [data-testid="stPopoverBody"]:has(.fx-asst-head) [data-testid="stButtonGroup"] {{ gap: 0.35rem !important; }}
 .fx-asst-head {{ display: flex; align-items: center; gap: 0.7rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--glass-border); }}
-.fx-asst-title {{ font-weight: 800; font-size: 1.05rem; letter-spacing: -0.02em; color: var(--text); }}
+.fx-asst-title {{ font-family: var(--display) !important; font-weight: 800; font-size: 1.05rem; letter-spacing: -0.005em; color: var(--text); }}
 .fx-asst-sub {{ color: var(--muted); font-size: 0.8rem; }}
 [data-testid="stPopoverBody"] [data-testid="stChatMessage"] {{ background: var(--glass); border-radius: 14px; padding: 0.6rem 0.8rem; }}
 [data-testid="stPopoverBody"] [data-testid="stChatMessage"] p, [data-testid="stPopoverBody"] [data-testid="stChatMessage"] li {{ font-size: 0.93rem; }}
@@ -508,7 +510,7 @@ footer {{ visibility: hidden !important; }}
 [class*="st-key-appearance_"] [data-testid="stButtonGroup"] button {{
   min-width: 0 !important; min-height: 2.3rem !important; padding: 0 0.3rem !important; gap: 0.25rem !important;
 }}
-[class*="st-key-appearance_"] [data-testid="stButtonGroup"] button p {{ font-size: 0.78rem !important; letter-spacing: -0.01em; }}
+[class*="st-key-appearance_"] [data-testid="stButtonGroup"] button p {{ font-size: 0.78rem !important; letter-spacing: 0; }}
 [class*="st-key-appearance_"] [data-testid="stButtonGroup"] button [data-testid="stIconMaterial"] {{ font-size: 1rem !important; margin-right: 0 !important; }}
 .fx-check {{ display: flex; align-items: center; gap: 0.6rem; font-size: 0.94rem; color: var(--text-2); padding: 0.3rem 0; }}
 

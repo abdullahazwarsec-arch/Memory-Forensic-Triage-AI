@@ -342,16 +342,17 @@ def build_commands_doc():
     bullets(doc, [
         ("0. Sign in: ", "the first start asks you to create the administrator; administrators add analysts on "
                          "the Users page (temporary password, changed at first sign-in)."),
-        ("1. Case session: ", "enter the case number and who the findings are prepared for (recipient, organisation, "
-                              "purpose, reference), then Open case session. The analyst is your account."),
-        ("2. Evidence origin: ", "record where the evidence came from (device, custodian, location, collected by, "
-                                 "when, tool) and optionally the hash printed by the acquisition tool."),
-        ("3. Evidence intake: ", "choose Sample profile, Volatility CSV (upload) or Memory dump (upload, or paste a path "
-                                 "for large dumps), then Extract features for dumps."),
-        ("4. Run triage: ", "pick the memory snapshot (row) and press Analyse snapshot. Scan all rows scores every row."),
-        ("5. Results tabs: ", "Overview, Explainability (SHAP / LIME), Provenance, Chain of custody, Report, Audit log."),
-        ("6. Report: ", "download the sealed PDF from the Report tab; its SHA-256 is shown underneath."),
-        ("7. Finish: ", "press Close case (confirm) — the closing time is written to the case record and audit log. "
+        ("1. Start a case: ", "enter the case number and the recipient (more details are optional), then Start case. "
+                              "The analyst is your account."),
+        ("2. Add evidence: ", "say where it came from (device, who collected it, optional expected hash), then choose "
+                              "Try a sample, Feature file (CSV) or Memory dump (upload, or a path for large dumps)."),
+        ("3. Analyse: ", "press Analyse evidence (pick a snapshot first if the file has several; Scan all snapshots "
+                         "scores them all)."),
+        ("4. Result: ", "What it means (plain-English verdict, next steps, main reasons) and Report. Switch on "
+                        "Show technical details in the sidebar for Explainability, Provenance, Chain of custody and "
+                        "Audit log tabs."),
+        ("5. Report: ", "download the sealed PDF from the Report tab; its SHA-256 is shown underneath."),
+        ("6. Finish: ", "press Close case (confirm) — the closing time is written to the case record and audit log. "
                         "Reopen it later from the Cases page."),
         ("Help: ", "the Help page has a guide, glossary and FAQ; the Assistant button (bottom-right) answers "
                    "questions offline, including “explain my result”."),
@@ -372,7 +373,7 @@ def build_commands_doc():
     command(doc, "Choose the output folder", r'python -m hazmem.memdump_extractor "<dump>" --out "<folder>"',
             "Default output folder: outputs\\extracted\\<dump name>_<date>_<time>\\")
     table(doc, ["File created", "What it is"], [Inches(2.4), Inches(4.3)], [
-        ("<dump>_features.csv", "The 55 features — load this in the dashboard as a Volatility CSV"),
+        ("<dump>_features.csv", "The 55 features — load this in the dashboard as a Feature file (CSV)"),
         ("<dump>_features.csv.sha256", "Hash of the CSV in sha256sum format"),
         ("extraction_report.json", "OS info, plugin timings/row counts, warnings and the before/after hashes"),
         ("windows.<plugin>.json", "Raw output of each Volatility plugin (evidence for review)"),

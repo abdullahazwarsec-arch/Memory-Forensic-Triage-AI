@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256" role="img" aria-label="HazMem logo">
   <title>HazMem</title>
-  <!-- Original artwork for HazMem: skull in a toxic-green respirator with biohazard eyes. -->
+  <!-- Original artwork for HazMem: skull in a violet respirator with biohazard eyes. -->
   <defs>
     <linearGradient id="bone" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#f1ede2"/>
@@ -8,16 +8,16 @@
       <stop offset="1" stop-color="#b3ac9b"/>
     </linearGradient>
     <linearGradient id="maskGreen" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#86efac"/>
-      <stop offset="0.45" stop-color="#22c55e"/>
-      <stop offset="1" stop-color="#047857"/>
+      <stop offset="0" stop-color="#c4b5fd"/>
+      <stop offset="0.45" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#5b21b6"/>
     </linearGradient>
     <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#5b6662"/>
       <stop offset="1" stop-color="#29312e"/>
     </linearGradient>
     <radialGradient id="socketGlow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#14532d"/>
+      <stop offset="0" stop-color="#831843"/>
       <stop offset="0.7" stop-color="#06120d"/>
       <stop offset="1" stop-color="#030806"/>
     </radialGradient>
@@ -33,11 +33,11 @@
       <circle cx="-0.5543" cy="0.32" r="0.30" fill="#000"/>
       <circle r="0.12" fill="#000"/>
     </mask>
-    <g id="bio" mask="url(#bioCut)" fill="#4ade80" stroke="none">
+    <g id="bio" mask="url(#bioCut)" fill="#f472b6" stroke="none">
       <circle cx="0.0" cy="-0.48" r="0.42"/>
       <circle cx="0.4157" cy="0.24" r="0.42"/>
       <circle cx="-0.4157" cy="0.24" r="0.42"/>
-      <circle r="0.31" fill="none" stroke="#4ade80" stroke-width="0.09"/>
+      <circle r="0.31" fill="none" stroke="#f472b6" stroke-width="0.09"/>
     </g>
   </defs>
 
@@ -69,9 +69,9 @@
   <!-- Respirator -->
   <path d="M66 142 C90 128 112 126 128 134 C144 126 166 128 190 142 C196 176 180 208 152 226 L104 226 C76 208 60 176 66 142 Z"
         fill="url(#maskGreen)" stroke="#121a17" stroke-width="5" stroke-linejoin="round"/>
-  <path d="M80 148 C96 140 112 140 122 144" fill="none" stroke="#dcfce7" stroke-opacity="0.75" stroke-width="5" stroke-linecap="round"/>
-  <path d="M128 136 L128 190" stroke="#065f46" stroke-opacity="0.65" stroke-width="3"/>
-  <path d="M92 168 C104 178 116 184 128 186 C140 184 152 178 164 168" fill="none" stroke="#065f46" stroke-opacity="0.55" stroke-width="3"/>
+  <path d="M80 148 C96 140 112 140 122 144" fill="none" stroke="#ede9fe" stroke-opacity="0.75" stroke-width="5" stroke-linecap="round"/>
+  <path d="M128 136 L128 190" stroke="#4c1d95" stroke-opacity="0.65" stroke-width="3"/>
+  <path d="M92 168 C104 178 116 184 128 186 C140 184 152 178 164 168" fill="none" stroke="#4c1d95" stroke-opacity="0.55" stroke-width="3"/>
 
   <!-- Front valve -->
   <path d="M106 190 L150 190 L160 236 L96 236 Z" fill="url(#steel)" stroke="#121a17" stroke-width="5" stroke-linejoin="round"/>
@@ -83,13 +83,13 @@
     <circle cx="58" cy="196" r="27" fill="none" stroke="#6b7672" stroke-width="5"/>
     <circle cx="58" cy="196" r="15" fill="#1b2320" stroke="#121a17" stroke-width="3"/>
     <path d="M58 158 L58 168 M58 224 L58 234 M20 196 L30 196 M86 196 L96 196" stroke="#121a17" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="58" cy="196" r="5" fill="#4ade80" filter="url(#glow)"/>
+    <circle cx="58" cy="196" r="5" fill="#f472b6" filter="url(#glow)"/>
   </g>
   <g>
     <circle cx="198" cy="196" r="38" fill="url(#steel)" stroke="#121a17" stroke-width="5"/>
     <circle cx="198" cy="196" r="27" fill="none" stroke="#6b7672" stroke-width="5"/>
     <circle cx="198" cy="196" r="15" fill="#1b2320" stroke="#121a17" stroke-width="3"/>
     <path d="M198 158 L198 168 M198 224 L198 234 M160 196 L170 196 M226 196 L236 196" stroke="#121a17" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="198" cy="196" r="5" fill="#4ade80" filter="url(#glow)"/>
+    <circle cx="198" cy="196" r="5" fill="#f472b6" filter="url(#glow)"/>
   </g>
 </svg>

@@ -47,7 +47,7 @@ SYNONYMS = {
 def _explain_result(ctx: dict) -> str:
     r = ctx.get("result")
     if not r:
-        return ("There is no result yet. Open a case, load evidence and press **Analyse snapshot** — then ask me "
+        return ("There is no result yet. Open a case, load evidence and press **Analyse evidence** — then ask me "
                 "again and I will explain the verdict in plain words.")
     lines = [f"**{r['risk'].title()}** — the model is **{r['score']:.1f}%** confident this memory snapshot is "
              f"{'malicious' if r['malware'] else 'benign'}."]
@@ -65,8 +65,8 @@ def _explain_result(ctx: dict) -> str:
 
 def _next_step(ctx: dict) -> str:
     if not ctx.get("case_open"):
-        return ("**Next: open a case.** On the **Triage** page enter a case number and who the findings are "
-                "prepared for, then press **Open case session**.")
+        return ("**Next: open a case.** On the **Analyse** page enter a case number and who the findings are "
+                "prepared for, then press **Start case**.")
     if not ctx.get("evidence_loaded"):
         return ("**Next: load the evidence.** Fill in the **Evidence origin** (where it came from, who collected "
                 "it), then choose a sample, upload a Volatility CSV or add a memory dump.")
@@ -77,10 +77,10 @@ def _next_step(ctx: dict) -> str:
         return "**The evidence failed input validation**, so it cannot be analysed. Check the red message for why."
     if ctx.get("validation") == "warn" and not ctx.get("result"):
         return ("**Review the validation warning**, tick the acknowledgement box if you accept it, then press "
-                "**Analyse snapshot**.")
+                "**Analyse evidence**.")
     r = ctx.get("result")
     if not r:
-        return "**Next: pick a memory snapshot (row) and press Analyse snapshot.**"
+        return "**Next: pick a memory snapshot (row) and press Analyse evidence.**"
     actions = "\n".join(f"- {re.sub(r'^[^A-Za-z]+', '', a)}" for a in r["actions"])
     report = ("Download the sealed PDF from the **Report** tab." if ctx.get("report_ready")
               else "Then open the **Report** tab to generate the sealed PDF.")
@@ -140,8 +140,8 @@ TOPICS = [
     ("status", ["where am i", "what is my progress", "status", "which step am i on", "what have i done"], _status),
     ("open_case", ["how do i open a case", "start a case", "create a case", "new case", "case number",
                    "how to begin", "get started"],
-     "On **Triage**, enter a **case number** (one is suggested), the **recipient** the findings are for, the purpose "
-     "and an optional reference, then press **Open case session**. Everything you do afterwards is recorded under "
+     "On **Analyse**, enter a **case number** (one is suggested), the **recipient** the findings are for, the purpose "
+     "and an optional reference, then press **Start case**. Everything you do afterwards is recorded under "
      "that case and your account."),
     ("recipient", ["who is the evidence prepared for", "what is the recipient field", "who is the recipient",
                    "prepared for",
@@ -175,11 +175,11 @@ TOPICS = [
      "reference profiles from the CIC-MalMem2022 research dataset — ideal for learning the dashboard."),
     ("analyse", ["how do i analyse", "run analysis", "analyse snapshot", "what is a snapshot row",
                  "run the model", "start analysis"],
-     "Pick a **memory snapshot** (a row of the file) and press **Analyse snapshot**. The dashboard first re-checks "
+     "Pick a **snapshot** (if the file has several) and press **Analyse evidence**. The dashboard first re-checks "
      "the evidence fingerprints, then runs the Random Forest and the zero-day detector and explains the verdict."),
     ("scan_all", ["scan all rows", "analyse every row", "batch scan", "check all snapshots",
                   "scan every snapshot at once", "score all rows together"],
-     "**Scan all rows** quickly scores every snapshot in the file and lists them by risk, so you can choose the "
+     "**Scan all snapshots** quickly scores every snapshot in the file and lists them by risk, so you can choose the "
      "riskiest one to analyse in detail."),
     ("report", ["download the report", "pdf report", "export report", "generate report", "print report"],
      "After an analysis open the **Report** tab and press **Download**. The PDF includes the verdict, explanations, "
@@ -238,6 +238,8 @@ for _term, _meaning in help_page.GLOSSARY:
                    + [f"meaning of {_key}", f"what does {_key} mean"], f"**{_term}** — {_meaning}"))
 # Extra phrasings for some FAQ entries
 FAQ_ALIASES = {
+    "Where are the hashes, charts and custody ledger?": ["show technical details", "where are the charts",
+                                                          "expert mode", "show more details", "simple view"],
     "How do I check that a file is the right one?": ["verify a hash", "check the hash of my csv", "hash checker",
                                                      "is my csv correct", "compare hash", "verify memory image hash",
                                                      "check csv was converted correctly"],
@@ -251,7 +253,7 @@ for _q, _a in help_page.FAQ:
 
 SUGGESTIONS = {
     "start":    ["How do I open a case?", "What is a memory dump?", "Try a sample", "What can you do?"],
-    "evidence": ["What should I do next?", "Is the evidence intact?", "How do I analyse?", "Scan all rows"],
+    "evidence": ["What should I do next?", "Is the evidence intact?", "How do I analyse?", "Scan all snapshots"],
     "result":   ["Explain my result", "What should I do next?", "How do I download the report?",
                  "How to read the chart"],
 }

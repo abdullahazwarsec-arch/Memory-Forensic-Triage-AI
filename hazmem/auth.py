@@ -291,7 +291,7 @@ def unlock(username: str, by: str):
                   lambda rec, _: rec.update(failed_attempts=0, locked_until=None))
 
 
-PREFERENCES = {"theme": ("light", "dark", "auto")}
+PREFERENCES = {"theme": ("light", "dark", "auto"), "view": ("simple", "expert")}
 
 
 def set_preference(username: str, key: str, value: str):

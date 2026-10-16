@@ -20,8 +20,8 @@
 
   // Colours per theme (html[data-theme] is set by theme.js); k scales the glow strength.
   const PALETTES = {
-    dark:  { SPORE: "74, 222, 128", LINK: "16, 185, 129", HOT: "163, 230, 53", GAS: "16, 185, 129", GAS2: "5, 150, 105", k: 1, mark: 0.045 },
-    light: { SPORE: "5, 150, 105",  LINK: "4, 120, 87",   HOT: "77, 124, 15",  GAS: "16, 185, 129", GAS2: "45, 212, 191", k: 0.55, mark: 0.07 },
+    dark:  { SPORE: "167, 139, 250", LINK: "139, 92, 246", HOT: "236, 72, 153", GAS: "139, 92, 246", GAS2: "168, 85, 247", k: 1, mark: 0.05 },
+    light: { SPORE: "124, 58, 237",  LINK: "109, 40, 217", HOT: "219, 39, 119", GAS: "139, 92, 246", GAS2: "236, 72, 153", k: 0.5, mark: 0.06 },
   };
   let SPORE, LINK, HOT, GAS, GAS2, K, MARK;
   const usePalette = () => {
@@ -50,9 +50,9 @@
     off.width = off.height = size;
     const c = off.getContext("2d"), u = size / 2.4, cx = size / 2, cy = size / 2;
     const at = (d, a) => [cx + d * u * Math.cos(a * Math.PI / 180), cy + d * u * Math.sin(a * Math.PI / 180)];
-    c.fillStyle = "rgb(74, 222, 128)";
+    c.fillStyle = "rgb(167, 139, 250)";
     for (const a of [-90, 30, 150]) { const [x, y] = at(0.48, a); c.beginPath(); c.arc(x, y, 0.42 * u, 0, 7); c.fill(); }
-    c.strokeStyle = "rgb(74, 222, 128)"; c.lineWidth = 0.09 * u;
+    c.strokeStyle = "rgb(167, 139, 250)"; c.lineWidth = 0.09 * u;
     c.beginPath(); c.arc(cx, cy, 0.31 * u, 0, 7); c.stroke();
     c.globalCompositeOperation = "destination-out";
     for (const a of [-90, 30, 150]) { const [x, y] = at(0.64, a); c.beginPath(); c.arc(x, y, 0.30 * u, 0, 7); c.fill(); }

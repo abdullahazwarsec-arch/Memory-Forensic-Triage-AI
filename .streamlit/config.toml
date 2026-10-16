@@ -12,34 +12,33 @@ maxUploadSize = 8192
 toolbarMode = "minimal"
 
 [theme]
-# "Emerald Forensics" - shared settings; colours per mode below (match ui_theme.py tokens).
+# "Royal Purple" - shared settings; colours per mode below (match hazmem/ui_theme.py tokens).
 # Users switch Light / Dark / Auto in the dashboard sidebar (hazmem/assets/theme.js).
-baseFontSize = 17
-baseRadius = "12px"
+baseFontSize = 16
+baseRadius = "14px"
 buttonRadius = "full"
 showSidebarBorder = true
-headingFontWeights = [800, 800, 700, 700, 700, 700]
-font = "Plus Jakarta Sans:https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+headingFontWeights = [700, 700, 600, 600, 600, 600]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "Poppins:https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap"
 codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
 
 [theme.dark]
-base = "dark"
-primaryColor = "#10b981"
-backgroundColor = "#070d0b"
-secondaryBackgroundColor = "#0f1a16"
-textColor = "#e3f2ec"
-borderColor = "#1f332c"
-linkColor = "#34d399"
-codeBackgroundColor = "#0b1512"
-dataframeHeaderBackgroundColor = "#0f1a16"
+primaryColor = "#8b5cf6"
+backgroundColor = "#100b1f"
+secondaryBackgroundColor = "#1a1330"
+textColor = "#eeeafb"
+borderColor = "#34295a"
+linkColor = "#c4b5fd"
+codeBackgroundColor = "#150f29"
+dataframeHeaderBackgroundColor = "#1a1330"
 
 [theme.light]
-base = "light"
-primaryColor = "#059669"
-backgroundColor = "#f3f8f5"
-secondaryBackgroundColor = "#e3eee8"
-textColor = "#0f1f19"
-borderColor = "#cfe0d7"
-linkColor = "#047857"
-codeBackgroundColor = "#e8f2ec"
-dataframeHeaderBackgroundColor = "#e3eee8"
+primaryColor = "#7c3aed"
+backgroundColor = "#f8f6ff"
+secondaryBackgroundColor = "#f1ecff"
+textColor = "#1e1537"
+borderColor = "#dcd2f7"
+linkColor = "#6d28d9"
+codeBackgroundColor = "#f1ecff"
+dataframeHeaderBackgroundColor = "#f1ecff"

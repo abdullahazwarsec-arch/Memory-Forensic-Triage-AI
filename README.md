@@ -53,7 +53,7 @@ that: a skull in a respirator with biohazard eyes.
 | | |
 |---|---|
 | 🧠 **Analysis** | Raw Windows memory dumps (`.raw .mem .vmem .dmp .lime …`) → Volatility 3 extracts 55 features automatically. Also accepts Volatility feature CSVs and built-in sample profiles. |
-| 🤖 **Detection** | Random Forest malware score with three risk tiers, plus an Isolation Forest **zero-day** anomaly check. *Scan all rows* scores every snapshot at once. |
+| 🤖 **Detection** | Random Forest malware score with three risk tiers, plus an Isolation Forest **zero-day** anomaly check. *Scan all snapshots* scores every snapshot at once. |
 | 🔍 **Explainability** | **SHAP** global drivers and **LIME** local rules as interactive charts and plain-English driver cards — *why* the model decided. |
 | 🔗 **Chain of custody** | SHA-256 + MD5 at every stage, an **HMAC-keyed custody ledger**, write-protected working copies, and verification of the hash reported by the acquisition tool. Analysis is **blocked** on any mismatch. |
 | 🧾 **Provenance** | Where the evidence came from (device, custodian, location, collector, time, tool) and who it is prepared for (recipient, purpose, reference) — sealed into the ledger and the report. |
@@ -61,15 +61,16 @@ that: a skull in a respirator with biohazard eyes.
 | ⏱️ **Time estimates** | Estimated time before every extraction and analysis, and a live *“about N left”* countdown that learns this machine's speed. |
 | 📄 **Sealed reports** | PDF dossier with verdict, explanations, provenance, response actions and the full custody ledger; its SHA-256 is recorded in the ledger, the audit log and a `.sha256` sidecar. |
 | 🔐 **Accounts & audit** | Sign-in with roles (Administrator / Analyst), lockout, idle timeout and an **HMAC-chained, tamper-evident audit log** with an Audit log page for administrators. |
-| 🧭 **Usability** | Guided start, Cases page to reopen past work, Help page with glossary & FAQ, and an **offline help assistant** that explains your result. **Light, Dark and Auto** modes (saved per account) and a toxic-green theme with an interactive background (rising spores, gas clouds and a biohazard watermark that react to the mouse). |
+| 🧭 **Simple to use** | A **simple view** by default: start a case, add evidence, press *Analyse evidence* and read the result in plain English with clear next steps. Hashes, the custody ledger and the SHAP/LIME charts appear only when **Show technical details** is switched on (saved per account). Guided start, Cases page, Help with glossary & FAQ and an **offline help assistant**. |
+| 🎨 **Design** | Royal Purple theme with **Light, Dark and Auto** modes, Poppins / Inter typography, glowing violet-to-pink buttons and an interactive background (spores, gas clouds and a biohazard watermark that react to the mouse). |
 
 ## Screenshots
 
 | Sign in | Getting started |
 |:---:|:---:|
 | <img src="docs/images/screenshots/01_sign_in.png" width="440"> | <img src="docs/images/screenshots/02_triage_start.png" width="440"> |
-| **Explainability (SHAP)** | **Provenance** |
-| <img src="docs/images/screenshots/04_explainability.png" width="440"> | <img src="docs/images/screenshots/05_provenance.png" width="440"> |
+| **What it means (simple view)** | **Technical details switched on** |
+| <img src="docs/images/screenshots/04_what_it_means.png" width="440"> | <img src="docs/images/screenshots/05_technical_view.png" width="440"> |
 | **Cases** | **Audit log (administrators)** |
 | <img src="docs/images/screenshots/06_cases.png" width="440"> | <img src="docs/images/screenshots/07_audit_log.png" width="440"> |
 | **Offline help assistant** | **Light mode** |
@@ -135,13 +136,13 @@ Open <http://localhost:8501>. **On the first start you create the administrator 
 
 | Page | Who | What you do there |
 |---|---|---|
-| **Triage** | everyone | Open a case → record the evidence origin → load a sample, CSV or memory dump → *Analyse snapshot* → read the verdict, explanations, provenance and custody ledger → download the sealed report |
+| **Analyse** | everyone | *Start case* (case number + recipient) → add evidence (sample, feature CSV or memory dump; say where it came from) → *Analyse evidence* → read **What it means** → download the sealed **Report**. Switch on *Show technical details* for hashes, explanations, provenance and the custody ledger |
 | **Cases** | everyone | Search all cases, re-verify each evidence item, download sealed reports, *Continue this case* |
 | **Hash checker** | everyone | *Verify a file* against an expected hash · *Verify dump → CSV conversion* · how to get a hash with `certutil` / `Get-FileHash` / `sha256sum` |
 | **Audit log** | administrators | Sign-ins & sign-outs, failed attempts, lockouts, account changes and every recorded event — with integrity status, filters and CSV export |
 | **Users** | administrators | Create accounts, disable/enable, unlock, change roles, reset passwords |
-| **My account** | everyone | Change password, see your own sign-in history |
-| **Help** | everyone | Five-step guide, how to read the verdict, glossary and FAQ |
+| **Account** | everyone | Change password, see your own sign-in history |
+| **Help** | everyone | Four-step guide, how to read the result, glossary and FAQ |
 
 **Risk tiers:** **Normal** < 40 % · **Suspicious** 40–75 % · **High risk** ≥ 75 %. The **Assistant** button (bottom-right) answers
 questions offline — try *“explain my result”* or *“what should I do next?”*.
@@ -167,10 +168,12 @@ Memory-Forensic-Triage-AI/
 │   ├── timing.py                  # Time estimates and live countdowns (learns from previous runs)
 │   ├── memdump_extractor.py       # Volatility 3 dump → 55-feature CSV (also a CLI)
 │   ├── auth.py                    # Accounts: PBKDF2 passwords, roles, lockout, sealed account store
-│   ├── admin_pages.py             # Sign-in, first-run setup, Audit log, Users, My account pages
+│   ├── admin_pages.py             # Sign-in, first-run setup, Audit log, Users, Account pages
+│   ├── knowledge.py               # Plain-English feature meanings, response actions (expert + simple)
+│   ├── report_pdf.py              # Sealed PDF report (ReportLab)
 │   ├── help_page.py               # Help & glossary page
 │   ├── assistant.py               # Offline help assistant
-│   ├── ui_theme.py                # Light/dark design tokens, toxic-green theme and UI components
+│   ├── ui_theme.py                # Royal Purple light/dark design tokens and UI components
 │   └── assets/                    # background.js (interactive canvas), theme.js (light/dark), hazmem_logo.svg / .png
 │
 ├── scripts/
@@ -183,10 +186,10 @@ Memory-Forensic-Triage-AI/
 │
 ├── models/                        # Trained models + model_hashes.json (pinned SHA-256)
 ├── data/                          # Sample profiles and simulated scenarios (dataset CSV not committed)
-├── tests/                         # pytest suite (102 tests)
+├── tests/                         # pytest suite (104 tests)
 ├── docs/                          # Viva guide, commands runbook, figures, screenshots, results
 │
-├── outputs/                       # Generated locally: cases, extractions, sealed reports   (git-ignored)
+├── outputs/                       # Generated locally: cases/, extracted/, reports/        (git-ignored)
 ├── logs/                          # Audit log and archived logs                             (git-ignored)
 └── keys/                          # Ledger HMAC key and account store — never share         (git-ignored)
 ```
@@ -285,7 +288,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-**102 tests** (about 1–2 minutes) covering the custody ledger and forgery detection, model pinning, hashing and the hash checker (including the dump → CSV chain), time estimates, intake and feature gates, audit-log
+**104 tests** (about 1–2 minutes) covering the custody ledger and forgery detection, model pinning, hashing and the hash checker (including the dump → CSV chain), time estimates, intake and feature gates, audit-log
 tampering, duplicate writers and multi-process writes, archiving, the assistant's topic matching, and end-to-end dashboard
 flows (first-run setup, sign-in, lockout, idle timeout, revocation, a sealed triage run). Tests run against a throw-away
 key, account store, audit log and output folder — real evidence is never touched.

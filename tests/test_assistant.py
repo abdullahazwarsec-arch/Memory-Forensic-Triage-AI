@@ -43,6 +43,7 @@ CASES = [
     ("can i make it brighter", "faq:How do I switch between light and dark mode?"),
     ("how do i verify the hash of my csv", "faq:How do I check that a file is the right one?"),
     ("how long will the extraction take", "faq:How long will an analysis take?"),
+    ("where are the charts", "faq:Where are the hashes, charts and custody ledger?"),
     ("whats the weather in london", "unknown"),
     ("best pizza recipe", "unknown"),
     ("who won the football match", "unknown"),
