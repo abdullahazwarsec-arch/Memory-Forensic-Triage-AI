@@ -18,7 +18,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 from . import evidence_integrity as ei
 from . import ui_theme as ui
-from .knowledge import RESPONSE_ACTIONS, recipient_label
+from .knowledge import CLASSIFICATION, RESPONSE_ACTIONS, recipient_label
 
 REPORTS_DIR = os.path.join("outputs", "reports")   # set by app.py
 logger = logging.getLogger("triage")
@@ -216,7 +216,7 @@ def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.
     verdict_data = [
         [Paragraph("Risk Classification", cell_bold), Paragraph(xml_esc(result["risk"]), risk_style)],
         [Paragraph("Malware Confidence", cell_bold), Paragraph(f"{p_conf:.2f}%", cell_style)],
-        [Paragraph("Primary Prediction", cell_bold), Paragraph("MALWARE" if result["prediction"] else "BENIGN", risk_style)],
+        [Paragraph("Classification", cell_bold), Paragraph(CLASSIFICATION[result["risk"]], risk_style)],
         [Paragraph("Zero-Day Anomaly Check", cell_bold), Paragraph(xml_esc(anomaly_text), anomaly_style)],
     ]
     verdict_table = Table(verdict_data, colWidths=[140, 400])

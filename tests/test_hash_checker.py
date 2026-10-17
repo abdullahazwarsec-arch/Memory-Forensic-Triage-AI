@@ -1,5 +1,4 @@
 """Hash checker, hash parsing and time estimates."""
-import json
 
 import pytest
 from streamlit.testing.v1 import AppTest
@@ -103,3 +102,13 @@ def test_hash_checker_page(tmp_path, expected, verdict):
     next(b for b in at.button if b.label == "Compute & verify").click().run()
     assert not at.exception
     assert verdict in " ".join(str(m.value) for m in at.markdown)
+
+
+@pytest.mark.parametrize("probability,risk,label", [
+    (0.10, "NORMAL", "BENIGN"), (0.399, "NORMAL", "BENIGN"), (0.40, "SUSPICIOUS", "UNCERTAIN"),
+    (0.60, "SUSPICIOUS", "UNCERTAIN"), (0.749, "SUSPICIOUS", "UNCERTAIN"), (0.75, "HIGH RISK", "MALWARE"),
+    (0.99, "HIGH RISK", "MALWARE"),
+])
+def test_classification_always_matches_risk(probability, risk, label):
+    from hazmem.knowledge import CLASSIFICATION, risk_tier
+    assert risk_tier(probability) == risk and CLASSIFICATION[risk] == label

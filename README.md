@@ -16,7 +16,7 @@ and **prove the evidence was never altered** — from acquisition to the sealed 
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-Random%20Forest-F7931E?logo=scikitlearn&logoColor=white)
 ![XAI](https://img.shields.io/badge/XAI-SHAP%20%2B%20LIME-10B981)
 ![Volatility](https://img.shields.io/badge/Volatility-3-1F6FEB)
-![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)
+[![tests](https://github.com/abdullahazwarsec-arch/Memory-Forensic-Triage-AI/actions/workflows/tests.yml/badge.svg)](https://github.com/abdullahazwarsec-arch/Memory-Forensic-Triage-AI/actions/workflows/tests.yml)
 
 <img src="docs/images/screenshots/03_verdict.png" alt="Verdict view: malware score gauge, risk level, zero-day check and evidence integrity" width="900">
 
@@ -53,7 +53,7 @@ that: a skull in a respirator with biohazard eyes.
 | | |
 |---|---|
 | 🧠 **Analysis** | Raw Windows memory dumps (`.raw .mem .vmem .dmp .lime …`) → Volatility 3 extracts 55 features automatically. Also accepts Volatility feature CSVs and built-in sample profiles. |
-| 🤖 **Detection** | Random Forest malware score with three risk tiers, plus an Isolation Forest **zero-day** anomaly check. *Scan all snapshots* scores every snapshot at once. |
+| 🤖 **Detection** | Random Forest malware score with three risk tiers (Normal < 40 % → *Benign*, Suspicious 40–75 % → *Uncertain*, High risk ≥ 75 % → *Malware* — one set of thresholds everywhere), plus an Isolation Forest **zero-day** anomaly check. *Scan all snapshots* scores every snapshot at once. |
 | 🔍 **Explainability** | **SHAP** global drivers and **LIME** local rules as interactive charts and plain-English driver cards — *why* the model decided. |
 | 🔗 **Chain of custody** | SHA-256 + MD5 at every stage, an **HMAC-keyed custody ledger**, write-protected working copies, and verification of the hash reported by the acquisition tool. Analysis is **blocked** on any mismatch. |
 | 🧾 **Provenance** | Where the evidence came from (device, custodian, location, collector, time, tool) and who it is prepared for (recipient, purpose, reference) — sealed into the ledger and the report. |
@@ -156,8 +156,9 @@ instantly — Streamlit's own widgets and tables included — and is saved to yo
 Memory-Forensic-Triage-AI/
 ├── app.py                         # Streamlit dashboard: triage workflow, models, SHAP/LIME, PDF report, Cases page
 ├── run_app.bat                    # Double-click launcher (Windows)
-├── requirements.txt               # Runtime dependencies
+├── requirements.txt               # Runtime dependencies (pinned versions)
 ├── requirements-dev.txt           # + pytest and python-docx (tests and documentation)
+├── .github/workflows/tests.yml    # GitHub Actions: runs the test suite on every push
 ├── pytest.ini
 │
 ├── hazmem/                     # Supporting package
@@ -186,7 +187,7 @@ Memory-Forensic-Triage-AI/
 │
 ├── models/                        # Trained models + model_hashes.json (pinned SHA-256)
 ├── data/                          # Sample profiles and simulated scenarios (dataset CSV not committed)
-├── tests/                         # pytest suite (104 tests)
+├── tests/                         # pytest suite (111 tests)
 ├── docs/                          # Viva guide, commands runbook, figures, screenshots, results
 │
 ├── outputs/                       # Generated locally: cases/, extracted/, reports/        (git-ignored)
@@ -288,7 +289,9 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-**104 tests** (about 1–2 minutes) covering the custody ledger and forgery detection, model pinning, hashing and the hash checker (including the dump → CSV chain), time estimates, intake and feature gates, audit-log
+The same suite runs automatically on GitHub (Actions → *tests*) for every push.
+
+**111 tests** (about 1–2 minutes) covering the custody ledger and forgery detection, model pinning, hashing and the hash checker (including the dump → CSV chain), time estimates, intake and feature gates, audit-log
 tampering, duplicate writers and multi-process writes, archiving, the assistant's topic matching, and end-to-end dashboard
 flows (first-run setup, sign-in, lockout, idle timeout, revocation, a sealed triage run). Tests run against a throw-away
 key, account store, audit log and output folder — real evidence is never touched.

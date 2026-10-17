@@ -8,7 +8,6 @@ import os
 import re
 import json
 import uuid
-import html
 import logging
 import hashlib
 import hmac
@@ -38,8 +37,8 @@ from hazmem import assistant
 from hazmem import hash_checker
 from hazmem import timing
 from hazmem import report_pdf
-from hazmem.knowledge import (FEATURE_MEANINGS, get_feature_info, RISK_COLOURS, RESPONSE_ACTIONS,
-                              SIMPLE_ACTIONS, plain_name, recipient_label, origin_label)
+from hazmem.knowledge import (get_feature_info, RESPONSE_ACTIONS, SIMPLE_ACTIONS, CLASSIFICATION, risk_tier,
+                              plain_name, recipient_label, origin_label)
 from hazmem.report_pdf import generate_pdf_report
 
 
@@ -176,12 +175,7 @@ def run_triage(sample_df: pd.DataFrame, source_filename: str, row_index: int, in
     prediction = int(rf_model.predict(sample_df)[0])             # 0 = benign, 1 = malware
 
     # ── Risk tier assignment ──────────────────────────────────
-    if prob >= 0.75:
-        risk = "HIGH RISK"
-    elif prob >= 0.40:
-        risk = "SUSPICIOUS"
-    else:
-        risk = "NORMAL"
+    risk = risk_tier(prob)
 
     # ── Anomaly detection (zero-day layer) ────────────────────
     is_anomaly = False
@@ -1330,7 +1324,7 @@ def render_verdict(result: dict, chain):
     risk = result["risk"]
     tone = RISK_TONES[risk]
     pct = result["probability"] * 100
-    is_malware = bool(result["prediction"])
+    label = CLASSIFICATION[risk]
     banner = {
         "HIGH RISK":  ("Critical — contain the host", "Active malicious indicators found in memory. Isolate the endpoint and escalate."),
         "SUSPICIOUS": ("Suspicious — analyst review needed", "Memory metrics deviate from normal. Review before releasing the host."),
@@ -1353,8 +1347,8 @@ def render_verdict(result: dict, chain):
         return
     tiles = "".join([
         ui.kpi("Risk level", f"{ui.icon(RISK_GLYPHS[risk])} {risk}", color=ui.TONES[tone][0]),
-        ui.kpi("Classification", f"{ui.icon('coronavirus')} MALWARE" if is_malware else f"{ui.icon('shield')} BENIGN",
-               color=ui.CRITICAL if is_malware else ui.GOOD),
+        ui.kpi("Classification", f"{ui.icon({'MALWARE': 'coronavirus', 'UNCERTAIN': 'help', 'BENIGN': 'shield'}[label])} "
+                                 f"{label}", color=ui.TONES[tone][0]),
         ui.kpi("Zero-day check", f"{ui.icon('radar')} Anomaly" if result["is_anomaly"] else f"{ui.icon('check_circle')} Normal",
                color=ui.WARNING if result["is_anomaly"] else ui.GOOD),
         ui.kpi("Evidence integrity", f"{ui.icon('lock')} Verified" if chain.is_intact else f"{ui.icon('lock_open')} Compromised",
@@ -1640,9 +1634,9 @@ def render_dashboard(state: dict):
             st.session_state["batch_summary"] = pd.DataFrame({
                 "Row": range(len(df)),
                 "Malware confidence": probs * 100,
-                "Verdict": ["🦠 Malware" if p >= 0.5 else "🛡️ Benign" for p in probs],
-                "Risk": [f"{RISK_ICONS[r]} {r}" for r in
-                         ["HIGH RISK" if p >= 0.75 else "SUSPICIOUS" if p >= 0.40 else "NORMAL" for p in probs]],
+                "Verdict": [{"MALWARE": "🦠 Malware", "UNCERTAIN": "❔ Uncertain", "BENIGN": "🛡️ Benign"}[
+                                CLASSIFICATION[risk_tier(p)]] for p in probs],
+                "Risk": [f"{RISK_ICONS[risk_tier(p)]} {risk_tier(p)}" for p in probs],
             })
         if st.session_state.get("batch_summary") is not None:
             render_batch_results(st.session_state["batch_summary"])
@@ -1983,7 +1977,7 @@ def assistant_context(user: dict) -> dict:
             (r["Plain English Indicator"], r["SHAP Value"] > 0, r["SHAP Value"] * 100)
             for _, r in shap_df.head(3).iterrows()]
         ctx["result"] = {"risk": result["risk"], "score": result["probability"] * 100,
-                         "malware": bool(result["prediction"]), "anomaly": bool(result["is_anomaly"]),
+                         "malware": result["probability"] >= 0.5, "anomaly": bool(result["is_anomaly"]),
                          "drivers": drivers, "actions": RESPONSE_ACTIONS[result["risk"]]}
     return ctx
 

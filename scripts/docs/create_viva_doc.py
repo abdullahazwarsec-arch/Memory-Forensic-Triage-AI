@@ -1,11 +1,10 @@
-import os
 from pathlib import Path
 import docx
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
-from docx.oxml import OxmlElement, parse_xml
-from docx.oxml.ns import nsdecls, qn
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = BASE_DIR / "outputs"
@@ -210,7 +209,7 @@ def build_document():
         ("LIME", "Local Explainable AI (XAI)", "LimeTabularExplainer generates human-readable local decision thresholds (e.g. 'handles.nhandles > 8500') for instance-level validation."),
         ("ReportLab", "Forensic PDF Compilation Engine", "Dynamically generates official, downloadable legal/incident response PDF reports complete with tables and incident response playbooks."),
         ("Pandas & NumPy", "Data Transformation & Arrays", "Data loading, feature matrix cleaning, label isolation, zero-padding, and tabular data structures."),
-        ("Matplotlib / Seaborn", "Forensic Data Visualization", "Renders ROC performance curves, confusion matrices, and SHAP/LIME waterfall impact horizontal bar charts."),
+        ("Matplotlib", "Forensic Data Visualization", "Renders ROC performance curves, confusion matrices, and SHAP/LIME waterfall impact horizontal bar charts."),
         ("Joblib", "Model Serialization & Archival", "Serializes trained AI brains into .pkl files (random_forest_model.pkl, multiclass_random_forest.pkl, isolation_forest.pkl)."),
         ("Volatility Framework", "Forensic Artifact Reference", "The underlying digital forensics domain standard from which the 55 memory artifacts (malfind, pslist, handles, dlllist, etc.) are extracted.")
     ]

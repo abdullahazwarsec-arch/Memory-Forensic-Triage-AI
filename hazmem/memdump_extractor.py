@@ -15,6 +15,7 @@ import os
 import sys
 import json
 import shutil
+import importlib.util
 import subprocess
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -83,14 +84,12 @@ def _vol_command():
         candidate = os.path.join(scripts_dir, name)
         if os.path.isfile(candidate):
             return [candidate]
-    try:
-        import volatility3  # noqa: F401
+    if importlib.util.find_spec("volatility3") is not None:
         return [sys.executable, "-c",
                 "import sys; sys.argv[0] = 'vol'; from volatility3.cli import main; main()"]
-    except ImportError:
-        vol = shutil.which("vol") or shutil.which("vol.py")
-        if vol:
-            return [vol]
+    vol = shutil.which("vol") or shutil.which("vol.py")
+    if vol:
+        return [vol]
     raise ExtractionError("Volatility 3 is not installed. Run: pip install volatility3")
 
 

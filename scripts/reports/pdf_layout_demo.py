@@ -1,6 +1,4 @@
 import os
-import re
-from datetime import datetime
 import pandas as pd
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle

@@ -209,6 +209,19 @@ RISK_COLOURS = {
 }
 
 # Incident response recommendations per risk tier
+# One set of thresholds for everything shown to the user (risk tier and classification),
+# so a result can never read "Suspicious" and "Malware" at the same time.
+HIGH_RISK_AT, SUSPICIOUS_AT = 0.75, 0.40
+CLASSIFICATION = {"HIGH RISK": "MALWARE", "SUSPICIOUS": "UNCERTAIN", "NORMAL": "BENIGN"}
+
+
+def risk_tier(probability: float) -> str:
+    """Malware probability -> "HIGH RISK" (>= 75 %), "SUSPICIOUS" (40-75 %) or "NORMAL" (< 40 %)."""
+    if probability >= HIGH_RISK_AT:
+        return "HIGH RISK"
+    return "SUSPICIOUS" if probability >= SUSPICIOUS_AT else "NORMAL"
+
+
 # The same advice in everyday words (shown in the simple view)
 SIMPLE_ACTIONS = {
     "HIGH RISK": [
