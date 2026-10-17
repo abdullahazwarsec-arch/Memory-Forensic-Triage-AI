@@ -2,7 +2,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
-import joblib
 
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
 from sklearn.pipeline import make_pipeline
@@ -22,11 +21,10 @@ from sklearn.metrics import (
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_PATH = BASE_DIR / "data" / "Obfuscated-MalMem2022.csv"
-MODELS_DIR = BASE_DIR / "models"
 OUTPUTS_DIR = BASE_DIR / "outputs"
 
 print("=" * 70)
-print("ACADEMIC MODEL EVALUATION & MODEL COMPARISON PIPELINE")
+print("MODEL COMPARISON (random split - optimistic, see docs/results/honest_evaluation.md)")
 print("=" * 70)
 
 print("\n[1/5] Loading and preparing dataset...")
@@ -112,9 +110,8 @@ print(comparison_df[['model', 'accuracy', 'precision', 'recall', 'f1_score', 'ro
 
 print("\n[5/5] Generating best-model visual outputs...")
 
-# Save the best-performing model to the app-compatible filename for dashboard usage
-joblib.dump(best_model, MODELS_DIR / "random_forest_model.pkl")
-print(f"✅ [Saved] {MODELS_DIR / 'random_forest_model.pkl'}")
+# The deployed model is trained by scripts/training/train_models.py (de-duplicated, grouped evaluation).
+# This script only compares model types on a random split, so it no longer overwrites models/.
 
 # Best-model confusion matrix
 fig, ax = plt.subplots(figsize=(6, 5))

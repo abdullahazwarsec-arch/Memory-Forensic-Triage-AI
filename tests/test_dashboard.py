@@ -151,3 +151,23 @@ def test_simple_view_by_default_and_technical_switch(fresh_users):
     next(t for t in at.toggle if t.label == "Show technical details").set_value(True).run()
     assert "Preview evidence data" in sections()
     assert auth.get_user("bob")["preferences"]["view"] == "expert"
+
+
+def test_malware_sample_shows_type_hint_reliability_and_process_note(fresh_users):
+    fresh_users.create_user("admin1", "Alice Admin", "admin", "Str0ngPassw0rd", "test", must_change_password=False)
+    at = sign_in(run_app(), "admin1", "Str0ngPassw0rd")
+    field(at, "Recipient *").set_value("Test Recipient")
+    button(at, "Start case").click().run()
+    next(s for s in at.selectbox if s.label == "Choose a sample").set_value("guaranteed_malware.csv").run()
+    next(t for t in at.toggle if t.label == "Show technical details").set_value(True).run()
+    button(at, "Analyse evidence").click().run()
+    assert not at.exception
+    result = at.session_state["current_triage"]
+    assert result["risk"] == "HIGH RISK"
+    assert result["family"]["type"] in ("Ransomware", "Spyware", "Trojan")
+    assert abs(sum(result["family"]["all"].values()) - 1) < 1e-6
+    labels = [e.label for e in list(at.expander) + list(at.status)]
+    assert "How reliable is this result?" in labels
+    shown = texts(at)
+    assert "Likely type:" in shown and "Needs a memory dump" in shown   # CSV evidence has no per-process data
+    assert result["process_findings"] is None                           # set when the PDF was sealed

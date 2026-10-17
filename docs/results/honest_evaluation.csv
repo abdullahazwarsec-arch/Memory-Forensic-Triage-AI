@@ -1,0 +1,7 @@
+test,accuracy,precision,recall,f1,roc_auc
+Random 5-fold (old method),0.9998,0.9998,0.9999,0.9998,1.0
+"Grouped by malware sample, 5-fold",0.9993,0.9998,0.9989,0.9993,1.0
+One rule only: svcscan.nservices <= 390.5,0.9966,,,,
+Grouped 5-fold without the svcscan features,0.9993,0.9997,0.9989,0.9993,1.0
+"Malware type, random 5-fold",0.7144,,,,
+"Malware type, grouped by sample 5-fold",0.6761,,,,

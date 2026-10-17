@@ -177,6 +177,22 @@ TOPICS = [
                  "run the model", "start analysis"],
      "Pick a **snapshot** (if the file has several) and press **Analyse evidence**. The dashboard first re-checks "
      "the evidence fingerprints, then runs the Random Forest and the zero-day detector and explains the verdict."),
+    ("processes", ["which process is malicious", "processes tab", "which program is infected", "suspicious process",
+                   "injected code", "hidden process", "pid"],
+     "For a **memory dump**, the **Processes** tab lists the processes that stand out: hidden from the process "
+     "list, a program or code injected into memory, a hidden DLL, the wrong parent process or a look-alike name "
+     "such as *svch0st.exe*. Check **High** first. They are leads, not proof — some normal programs (e.g. .NET "
+     "apps) also write code into memory. A CSV holds only totals, so it cannot point to a process."),
+    ("accuracy", ["how accurate", "how reliable", "can i trust the result", "accuracy", "false positive",
+                  "false alarm", "is the ai always right"],
+     "On the research data the model is right almost every time, even for malware families it never saw "
+     "(tested with snapshots of one sample kept on one side of the split). **But** all of its clean examples come "
+     "from one Windows machine, so a clean computer set up differently can be flagged. Treat a warning as a "
+     "reason to check. See *How reliable is this result?* under the verdict."),
+    ("malware_type", ["what type of malware", "ransomware or spyware", "malware family", "likely type",
+                      "is it ransomware", "trojan"],
+     "When the verdict is not clean, a second model guesses the **likely type** — ransomware, spyware or trojan. "
+     "It is a hint: on samples it had not seen it was right about two times in three."),
     ("scan_all", ["scan all rows", "analyse every row", "batch scan", "check all snapshots",
                   "scan every snapshot at once", "score all rows together"],
      "**Scan all snapshots** quickly scores every snapshot in the file and lists them by risk, so you can choose the "

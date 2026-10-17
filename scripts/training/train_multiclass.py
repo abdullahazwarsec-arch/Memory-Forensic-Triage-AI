@@ -1,3 +1,11 @@
+"""
+SUPERSEDED - kept for reference only. Use scripts/training/train_models.py, which removes duplicate
+rows, evaluates with folds grouped by malware sample and writes models/model_card.json.
+This old script used a random split (optimistic accuracy) and would overwrite the deployed model.
+"""
+import sys
+sys.exit("Superseded: run scripts/training/train_models.py instead.")
+
 from pathlib import Path
 
 import pandas as pd

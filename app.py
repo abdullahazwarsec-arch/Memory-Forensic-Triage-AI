@@ -26,6 +26,7 @@ import streamlit as st
 import altair as alt
 
 from hazmem import memdump_extractor
+from hazmem import process_findings
 from hazmem import ui_theme as ui
 from hazmem import evidence_integrity as ei
 from hazmem import input_validation as iv
@@ -58,6 +59,7 @@ ISO_PATH    = (
     if os.path.exists(os.path.join(MODEL_DIR, "isolation_forest.pkl"))
     else os.path.join(BASE_DIR, "isolation_forest.pkl")
 )
+FAMILY_PATH = os.path.join(MODEL_DIR, "multiclass_random_forest.pkl")
 OUTPUT_DIR  = os.environ.get("HAZMEM_OUTPUT_DIR") or os.path.join(BASE_DIR, "outputs")
 LOG_DIR     = os.path.join(BASE_DIR, "logs")
 SAMPLES_DIR = os.path.join(DATA_DIR, "test_samples")
@@ -115,6 +117,30 @@ def load_iso_model():
         return None
     logger.info(f"MODEL VERIFIED | {os.path.basename(ISO_PATH)} | SHA256={sha256}")
     return model
+
+
+@st.cache_resource
+def load_family_model():
+    """Load the malware-type model (ransomware / spyware / trojan) — optional, a hint only."""
+    if not os.path.exists(FAMILY_PATH):
+        return None
+    try:
+        model, sha256 = ei.load_verified_model(FAMILY_PATH)
+    except ei.ModelIntegrityError as e:
+        logger.error(f"MODEL INTEGRITY FAILURE | {e} | malware-type hint disabled")
+        return None
+    logger.info(f"MODEL VERIFIED | {os.path.basename(FAMILY_PATH)} | SHA256={sha256}")
+    return model
+
+
+@st.cache_data(show_spinner=False)
+def load_model_card() -> dict:
+    """Honest evaluation numbers written by scripts/training/train_models.py."""
+    try:
+        with open(os.path.join(MODEL_DIR, "model_card.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -186,6 +212,15 @@ def run_triage(sample_df: pd.DataFrame, source_filename: str, row_index: int, in
             iso_pred = iso_model.predict(sample_arr)[0]
         is_anomaly = (iso_pred == -1)
 
+    # ── Malware type hint (only when the verdict is not clean) ─
+    family = None
+    family_model = load_family_model() if risk != "NORMAL" else None
+    if family_model is not None:
+        probs = family_model.predict_proba(sample_df)[0]
+        ranked = sorted(zip(family_model.classes_, probs), key=lambda t: -t[1])
+        family = {"type": str(ranked[0][0]), "probability": float(ranked[0][1]),
+                  "all": {str(c): float(p) for c, p in ranked}}
+
     # ── Chain-of-custody metadata ─────────────────────────────
     # Unique analysis ID bound to the evidence content hash, analysed row and time
     integrity     = integrity or {}
@@ -203,6 +238,7 @@ def run_triage(sample_df: pd.DataFrame, source_filename: str, row_index: int, in
         "probability":   prob,
         "prediction":    prediction,
         "is_anomaly":    is_anomaly,
+        "family":        family,
         "sample_df":     sample_df,
         "sample_arr":    sample_arr,
         "feature_cols":  expected_cols,
@@ -218,6 +254,7 @@ def run_triage(sample_df: pd.DataFrame, source_filename: str, row_index: int, in
         f"ROW={row_index} | RISK={risk} | CONF={prob:.4f} | "
         f"PREDICTION={'MALWARE' if prediction else 'BENIGN'} | "
         f"ANOMALY={is_anomaly}"
+        + (f" | LIKELY_TYPE={family['type']} ({family['probability']:.2f})" if family else "")
     )
 
     return result
@@ -1333,6 +1370,9 @@ def render_verdict(result: dict, chain):
     anomaly_html = ""
     if result["is_anomaly"]:
         anomaly_html = ui.banner("radar", "Zero-day anomaly", "Isolation Forest flagged this profile as an outlier versus known baselines.", "accent")
+    hint = family_hint(result)
+    if hint:
+        anomaly_html += ui.banner("category", hint[0], ui.esc(hint[1]), "accent")
     if not expert():
         tiles = "".join([
             ui.kpi("Risk level", f"{ui.icon(RISK_GLYPHS[risk])} {PLAIN_VERDICT[risk][1]}", color=ui.TONES[tone][0]),
@@ -1368,6 +1408,93 @@ def render_verdict(result: dict, chain):
     """)
 
 
+def family_hint(result: dict):
+    """(title, text) for the malware-type hint, or None when the verdict is clean or the model is missing."""
+    family = result.get("family")
+    if not family:
+        return None
+    accuracy = load_model_card().get("family", {}).get("grouped_cv_accuracy")
+    tested = f"right about {accuracy * 100:.0f} % of the time" if accuracy else "only a rough guide"
+    if expert():
+        others = ", ".join(f"{name} {p * 100:.0f} %" for name, p in list(family["all"].items())[1:])
+        return (f"Likely type: {family['type']} ({family['probability'] * 100:.0f} %)",
+                f"Malware-type model ({others}). A hint, not a verdict: on samples it had not seen it was {tested}.")
+    return (f"If it is malware, it looks most like {family['type'].lower()}",
+            f"This is a rough hint - in testing it was {tested}.")
+
+
+def process_findings_for(evidence: dict):
+    """Per-process leads for a memory dump (None for CSV evidence, which holds only counts)."""
+    if evidence.get("kind") != "memory-dump":
+        return None
+    report = evidence.get("report") or {}
+    if report.get("process_findings") is None:   # extractions made before this check existed
+        folder = report.get("output_dir")
+        report["process_findings"] = (process_findings.find_suspicious_processes(
+            process_findings.load_plugin_output(folder)) if folder and os.path.isdir(folder) else [])
+    return report["process_findings"]
+
+
+LEVEL_TONES = {"High": "critical", "Medium": "warning", "Low": "accent"}
+
+
+def render_processes_tab(evidence: dict):
+    findings = process_findings_for(evidence)
+    if findings is None:
+        ui.render_html(ui.banner("info", "Needs a memory dump",
+                                 "A feature CSV contains only whole-system counts, so it cannot point to a process. "
+                                 "Analyse the memory image itself to see which processes look wrong.", "accent"))
+        return
+    if not findings:
+        ui.render_html(ui.banner("verified_user", "No process stood out",
+                                 "None of the per-process checks (hidden processes, injected code, hidden DLLs, "
+                                 "wrong parents, look-alike names) found anything.", "good"))
+        return
+    counts = process_findings.summary(findings)
+    st.markdown(f"**{len(findings)} process(es) worth a look** — "
+                + " · ".join(f"{n} {level.lower()}" for level, n in counts.items() if n))
+    for f in findings[:25]:
+        fg = ui.TONES[LEVEL_TONES[f["level"]]][0]
+        reasons = "".join(f"<li>{ui.esc(r)}</li>" for r in f["reasons"])
+        detail = (f'<div style="font-size:0.85rem;color:var(--muted);">PID {f["pid"]}'
+                  + (f' · parent PID {f["ppid"]}' if f["ppid"] is not None else "")
+                  + (f' · {ui.esc("; ".join(f["details"]))}' if expert() and f["details"] else "") + "</div>")
+        ui.render_html(f'<div class="fx-action"><div class="fx-action-num" style="color:{fg};border:1px solid {fg};'
+                       f'min-width:4.6rem;">{f["level"]}</div><div style="min-width:0;"><div class="fx-action-text">'
+                       f'<b>{ui.esc(f["name"])}</b></div>{detail}<ul style="margin:0.2rem 0 0 1rem;">{reasons}</ul>'
+                       f'</div></div>')
+    st.caption("These are leads for an analyst, not proof: some legitimate programs (for example .NET apps and "
+               "browsers) also write code into memory. Check the High ones first.")
+
+
+def render_reliability_panel():
+    card = load_model_card()
+    if not card:
+        return
+    b, sc = card["binary"], card["shortcut"]
+    with st.expander("How reliable is this result?", icon=":material/fact_check:"):
+        if expert():
+            st.markdown(
+                f"- **Grouped test** (snapshots of one malware sample never in both train and test): "
+                f"{b['grouped_cv']['accuracy'] * 100:.2f} % accuracy; malware families held out completely were "
+                f"still detected ({b['leave_one_family_out'][b['hardest_unseen_family']]['recall'] * 100:.1f} % for the "
+                f"hardest, {b['hardest_unseen_family']}).\n"
+                f"- **But** one rule, `{sc['feature']} <= {sc['threshold']:.1f}`, already scores "
+                f"{sc['one_rule_accuracy'] * 100:.2f} %: all clean training data comes from one machine "
+                f"({sc['benign_range'][0]}–{sc['benign_range'][1]} services). Clean dumps from other machines or "
+                "Windows versions can be flagged wrongly.\n"
+                f"- **Malware type** hint: {card['family']['grouped_cv_accuracy'] * 100:.0f} % correct on unseen samples "
+                "(chance is 33 %).\n"
+                f"- Models trained {card['trained_utc']} on {card['dataset']['rows'] - card['dataset']['duplicates_removed']:,} "
+                "de-duplicated rows. Full report: `docs/results/honest_evaluation.md`.")
+        else:
+            st.markdown(
+                "- On the research data the AI was right almost every time, even for malware it had never seen.\n"
+                "- **But** all of its *clean* examples came from one computer, so a clean computer that is set up "
+                "differently can look suspicious. Treat a warning as a reason to check, not as proof.\n"
+                f"- The malware-type hint is right about {card['family']['grouped_cv_accuracy'] * 100:.0f} % of the time.")
+
+
 PLAIN_VERDICT = {
     "NORMAL": ("verified_user", "Looks clean", "The memory looks like a healthy Windows computer. No action is needed."),
     "SUSPICIOUS": ("warning", "Needs a closer look",
@@ -1385,6 +1512,9 @@ def render_overview_tab(result: dict):
     if result.get("is_anomaly"):
         text += " It also looks unlike anything the system has seen before, which can mean a new kind of threat."
     ui.render_html(ui.banner(glyph, title, ui.esc(text), RISK_TONES[result["risk"]]))
+    hint = family_hint(result)
+    if hint and not expert():
+        ui.render_html(ui.banner("category", hint[0], ui.esc(hint[1]), "accent"))
     col_a, col_b = st.columns([1.05, 1], gap="large")
     with col_a:
         st.markdown("##### What to do next")
@@ -1416,6 +1546,7 @@ def render_overview_tab(result: dict):
             ui.render_html("".join(rows))
             st.caption("▲ points towards malware · ▼ points towards a clean system."
                        + (" Details in the Explainability tab." if expert() else ""))
+    render_reliability_panel()
 
 
 def ensure_report(evidence: dict, result: dict) -> dict:
@@ -1429,6 +1560,7 @@ def ensure_report(evidence: dict, result: dict) -> dict:
                 logger.error(f"REPORT BLOCKED | CASE={evidence['chain'].case_id} | integrity verification failed")
             else:
                 try:
+                    result["process_findings"] = process_findings_for(evidence)
                     path, data = generate_pdf_report(result, shap_df=result.get("_shap_df"),
                                                      lime_df=result.get("_lime_df"), chain=evidence["chain"])
                     hashes = seal_report(evidence, path)
@@ -1671,16 +1803,22 @@ def render_dashboard(state: dict):
 
     st.write("")
     if not expert():
-        t_over, t_report = st.tabs([":material/lightbulb: What it means", ":material/picture_as_pdf: Report"])
-        with t_over:
+        is_dump = evidence.get("kind") == "memory-dump"
+        tabs = st.tabs([":material/lightbulb: What it means"] + ([":material/account_tree: Processes"] if is_dump else [])
+                       + [":material/picture_as_pdf: Report"])
+        with tabs[0]:
             render_overview_tab(result)
-        with t_report:
+        if is_dump:
+            with tabs[1]:
+                render_processes_tab(evidence)
+        with tabs[-1]:
             render_report_tab(result, pdf_state)
         st.caption("Want the evidence hashes, explanation charts or custody ledger? Turn on "
                    "**Show technical details** in the sidebar.")
         return
-    t_over, t_xai, t_prov, t_custody, t_report, t_log = st.tabs([
+    t_over, t_proc, t_xai, t_prov, t_custody, t_report, t_log = st.tabs([
         ":material/lightbulb: What it means",
+        ":material/account_tree: Processes",
         ":material/psychology: Explainability",
         ":material/travel_explore: Provenance",
         ":material/verified_user: Chain of custody",
@@ -1689,6 +1827,8 @@ def render_dashboard(state: dict):
     ])
     with t_over:
         render_overview_tab(result)
+    with t_proc:
+        render_processes_tab(evidence)
     with t_xai:
         s_shap, s_lime = st.tabs(["SHAP · global drivers", "LIME · local rules"])
         with s_shap:

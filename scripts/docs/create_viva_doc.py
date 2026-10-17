@@ -137,7 +137,7 @@ def build_document():
         ("Project Type", "Final Year Research / Defense"),
         ("Core Algorithm", "Random Forest + Isolation Forest"),
         ("Explainability", "Dual XAI (SHAP + LIME)"),
-        ("Evaluation Metric", "99.99% Accuracy / 1.00 ROC-AUC")
+        ("Evaluation Metric", "99.93% grouped-CV accuracy (honest split) + shortcut analysis")
     ]
     for idx, (label, val) in enumerate(meta_items):
         cell = meta_cells[idx]
@@ -164,7 +164,7 @@ def build_document():
         doc,
         "What to Say to Your Professor / Examiner Word-for-Word:",
         "\"Sir, modern malware—such as fileless ransomware, stealth rootkits, and Cobalt Strike beacons—increasingly avoids the hard drive completely and operates solely in volatile memory (RAM). Traditional forensic examination of 16GB–64GB RAM dumps with manual Volatility plugins takes hours and requires deep reverse-engineering expertise.\n\n"
-        "In this project, I developed an Autonomous Explainable AI Memory Forensics Triage System. The system ingests volatile memory profiles containing 55 kernel and process telemetry artifacts. Using a tuned Random Forest classifier, it categorizes memory profiles into Benign or Malicious with over 99.9% accuracy and cross-validated F1-score.\n\n"
+        "In this project, I developed an Autonomous Explainable AI Memory Forensics Triage System. The system ingests volatile memory profiles containing 55 kernel and process telemetry artifacts. Using a tuned Random Forest classifier, it categorizes memory profiles into Benign or Malicious. I evaluated it honestly: duplicates removed, folds grouped by malware sample so snapshots of one sample never appear in both training and testing, and whole malware families held out. It scores 99.93% under grouping - but I also show that one rule on the number of Windows services scores 99.66%, because the dataset's clean data comes from one machine. So I present the result as strong on this dataset, with a clearly stated limitation for real-world use. For memory dumps the system also points to the specific suspicious processes, and it gives a likely malware type as a hint.\n\n"
         "Crucially, in cyber forensics, an AI decision is useless without proof. To solve the 'AI Black Box' dilemma, I implemented a Dual Explainable AI (XAI) Framework combining SHAP (global cooperative game theory) and LIME (local surrogate decision rules), corroborated by a Plain-English Forensic Translation Engine. The entire system is deployed via an interactive Streamlit dashboard featuring SHA-256 chain-of-custody audit logging and automated PDF incident dossier generation for incident response teams.\""
     )
 
@@ -265,8 +265,8 @@ def build_document():
     doc.add_paragraph(
         "1. Label Isolation: In the raw CSV, 'Class' contains 'Benign'/'Malware' and 'Category' contains family names (e.g. 'Ransomware-Conti'). As proven in verify_data_integrity.py, the pipeline strictly separates the target vector (y) and drops all categorical strings from the feature matrix (X) to prevent target leakage.\n"
         "2. Binary Encoding: The 'Class' column is mapped to binary integer format (0 = Benign, 1 = Malware).\n"
-        "3. Multi-Class Parsing: In train_multiclass.py, string prefix parsing groups malware into 4 classes: Benign (0), Spyware (1), Ransomware (2), and Trojan (3).\n"
-        "4. Stratified 80/20 Splitting: Train/Test splitting is executed with stratification (stratify=y) to maintain identical class ratios across both splits, preventing class imbalance during evaluation."
+        "3. Duplicates and grouping: train_models.py removes 569 duplicate rows. Each malware row names its sample (e.g. Trojan-Zeus-<hash>-4.raw is snapshot 4 of one sample), so cross-validation folds are grouped by sample (StratifiedGroupKFold) - snapshots of one sample never sit in both training and testing. Benign rows carry no sample id, so the benign side remains a random split.\n"
+        "4. Malware type: the category prefix gives Ransomware, Spyware or Trojan; the type model is trained on malware rows only, because the binary model already decides benign vs malware."
     )
 
     # ── SECTION 5: HOW THE MODELS ARE TRAINED ─────────────────────────────────
@@ -275,13 +275,13 @@ def build_document():
     h1.paragraph_format.space_after = Pt(6)
     
     doc.add_paragraph(
-        "The project deploys a three-tier model hierarchy: a binary classifier, an unsupervised anomaly detector, and a multi-class malware family model."
+        "The project deploys three models: a binary classifier (the verdict), an unsupervised anomaly detector (zero-day check) and a malware-type model (a hint shown when the verdict is not clean). For memory dumps, rule-based per-process checks on the Volatility output (hidden processes, injected code, hidden DLLs, wrong parents, look-alike names) point to the specific processes behind the verdict."
     )
     
     model_data = [
-        ("Random Forest (Binary)", "150 Estimators, max_depth=12, min_samples_split=10, min_samples_leaf=4, max_features='sqrt'", "Primary triage classifier determining if a memory profile is Benign (0) or Malicious (1).", "Accuracy: 99.99%\nPrecision: 99.98%\nRecall: 100.0%\nF1-Score: 99.99%\nROC-AUC: 1.00"),
-        ("Isolation Forest (Unsupervised)", "n_estimators=100, contamination=0.05, max_samples='auto'", "Trained purely on normal/baseline profiles to identify out-of-distribution mathematical outliers (Zero-Day detector).", "Flags anomalous records with is_anomaly=True (prediction == -1)"),
-        ("Multi-Class Random Forest", "100 Estimators, max_depth=15, min_samples_split=10, min_samples_leaf=4", "Classifies memory profiles into specific malware families: Benign, Spyware, Ransomware, Trojan.", "Macro F1-Score: > 85% across obfuscated families"),
+        ("Random Forest (Binary)", "150 Estimators, max_depth=12, min_samples_split=10, min_samples_leaf=4, max_features='sqrt'", "Primary triage classifier determining if a memory profile is Benign (0) or Malicious (1).", "Grouped 5-fold: 99.93% accuracy, 99.89% recall\nUnseen families: 97.5-100% recall\nOne-rule baseline: 99.66%"),
+        ("Isolation Forest (Unsupervised)", "n_estimators=100, contamination=0.01, max_samples='auto'", "Trained purely on normal/baseline profiles to identify out-of-distribution mathematical outliers (Zero-Day detector).", "Flags anomalous records with is_anomaly=True (prediction == -1)"),
+        ("Malware-Type Random Forest", "150 Estimators, max_depth=15, min_samples_leaf=4, trained on malware rows only", "Shown as a hint when the verdict is not clean: likely Ransomware, Spyware or Trojan.", "Grouped 5-fold: 67.6% accuracy (chance 33%)\nRandom split: 71.4%"),
         ("Logistic Regression (Baseline)", "max_iter=2000, StandardScaler pipeline", "Used as a linear baseline in evaluate_model.py to prove superiority of non-linear tree ensembles.", "Accuracy: 99.87%\nROC-AUC: 0.9999")
     ]
     table_models = doc.add_table(rows=1, cols=4)
@@ -300,8 +300,8 @@ def build_document():
     h1.paragraph_format.space_after = Pt(6)
     
     scripts_info = [
-        ("training/train_model.py", "Binary Model Training Pipeline", "Loads the MalMem2022 dataset, isolates the 55 memory features, splits 80/20 with random_state=42, fits a 100-tree Random Forest classifier, validates accuracy, and serializes the model to models/random_forest_model.pkl."),
-        ("training/train_multiclass.py", "Multi-Class Malware Family Pipeline", "Extracts malware family labels (Benign, Spyware, Ransomware, Trojan), performs stratified splitting, trains a multi-class Random Forest, outputs a multi-class classification report, and saves models/multiclass_random_forest.pkl."),
+        ("training/train_models.py", "Honest Training & Evaluation Pipeline", "Removes 569 duplicate rows; evaluates with random vs sample-grouped 5-fold CV, leave-one-family-out and a one-rule shortcut baseline; trains the binary Random Forest, the benign-only Isolation Forest and the malware-type model; writes models/model_card.json and docs/results/honest_evaluation.md; re-pins the model hashes."),
+        ("training/train_model.py, train_multiclass.py", "Superseded (kept for reference)", "The original random-split scripts. They now stop immediately and point to train_models.py."),
         ("evaluation/evaluate_model.py", "Academic Model Evaluation & Visualization", "Runs Stratified 3-Fold Cross-Validation, compares Random Forest against Logistic Regression, exports model_comparison.csv, and generates visual artifacts: outputs/confusion_matrix.png and outputs/roc_curve.png."),
         ("evaluation/benchmark.py", "Comparative Algorithm Benchmark", "Executes 5-fold cross-validation benchmarking across Random Forest, Gradient Boosting (GBDT), and Logistic Regression to academically justify model selection."),
         ("evaluation/explain_model.py", "SHAP Global Explainability Script", "Initializes a shap.TreeExplainer on the saved model and generates outputs/shap_summary.png, graphing the top global features driving malware predictions across the dataset."),
@@ -397,10 +397,10 @@ def build_document():
         ),
         (
             "Q3: Your Random Forest model achieves near 100% accuracy. Is it overfitting?",
-            "\"Sir, this is a common and important question. In our pipeline, we proved the model is not merely memorizing the training data through three rigorous checks:\n\n"
-            "1. Tree Pruning & Regularization: We did not let trees grow unbounded. In evaluate_model.py, we constrained the model with max_depth=12, min_samples_split=10, min_samples_leaf=4, and max_features='sqrt'. These constraints prevent individual trees from memorizing single samples.\n"
-            "2. K-Fold Cross-Validation: We evaluated the model using Stratified 3-Fold and 5-Fold cross-validation. The mean cross-validated F1-score remained at 99.98% with an extremely low standard deviation (0.000079), proving the model generalizes across different unseen folds.\n"
-            "3. Strong Behavioral Separation: In physical RAM, active malware operations (such as unbacked executable pages from malfind or unlinked processes from psxview) exhibit massive mathematical divergence from legitimate Windows background processes, creating clear decision boundaries in feature space.\""
+            "\"Sir, I checked this carefully, and the honest answer has two parts.\n\n"
+            "1. Not leakage: each malware sample has about 10 snapshots, so a random split puts near-copies in training and testing. I removed 569 duplicates and grouped the folds by sample - accuracy only moved from 99.98% to 99.93%. Holding out each of the 15 families completely, the model still detected 97.5-100% of the unseen family.\n"
+            "2. But a shortcut: a single rule, svcscan.nservices <= 390.5, scores 99.66% on its own, because every clean snapshot comes from one machine with 388-395 services. Removing all service features still leaves 99.93%, so the machine fingerprint is spread across many counts. The dataset is too easy to prove real-world accuracy: a clean dump from a different Windows machine may be flagged. The dashboard states this under How reliable is this result?, and the fix is benign dumps from many machines.\n"
+            "3. What the evidence supports: strong separation on this benchmark, explanations (SHAP/LIME) that reveal which counts the model relies on, and per-process checks that give the analyst concrete leads.\""
         ),
         (
             "Q4: How does your system handle Zero-Day or novel malware attacks?",

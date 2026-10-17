@@ -268,8 +268,9 @@ def build_commands_doc():
         ("SHA-256 of a file (PowerShell)", 'Get-FileHash "<file>" -Algorithm SHA256', ""),
         ("Watch the audit log live", r"Get-Content logs\triage_audit.log -Tail 20 -Wait", "PowerShell; Ctrl + C to stop"),
         ("Check the dataset", "python scripts/evaluation/verify_data_integrity.py", "Rows, duplicates, features"),
-        ("Train the model", "python scripts/training/train_model.py", "⚠ Overwrites the dashboard model"),
-        ("Evaluate models", "python scripts/evaluation/evaluate_model.py", "⚠ Also overwrites the model"),
+        ("Train + honestly evaluate all models", "python scripts/training/train_models.py",
+         "⚠ Replaces the dashboard models (re-pins hashes)"),
+        ("Compare model types", "python scripts/evaluation/evaluate_model.py", "Random split; plots only"),
         ("Re-pin model hashes", "python scripts/admin/pin_model_hashes.py", "After any re-training"),
         ("Verify the audit log", "python -m hazmem.audit_log verify", "VERIFIED = untouched"),
         ("Unlock / reset an account", "python scripts/admin/manage_users.py --help", "Account recovery"),
@@ -444,9 +445,8 @@ def build_commands_doc():
     heading(doc, "6. Machine Learning & Explainability Scripts", 1)
     para(doc, "All scripts are run from the project root as: python scripts/<folder>/<name>.py. "
               "Most need data\\Obfuscated-MalMem2022.csv (see 2.6).")
-    warning(doc, "train_model.py and evaluate_model.py both OVERWRITE models\\random_forest_model.pkl — the model the "
-                 "dashboard uses. Back it up first (command below). There is no script in the project that re-creates "
-                 "models\\isolation_forest.pkl, so never delete that file.")
+    warning(doc, "train_models.py REPLACES all three models in models\\ (binary, Isolation Forest and malware type) "
+                 "and re-pins their hashes. Back them up first (command below) if you want to compare.")
     command(doc, "Back up the current model before retraining",
             r"copy models\random_forest_model.pkl models\random_forest_model.backup.pkl")
     command(doc, "Restore the backup",
@@ -454,12 +454,12 @@ def build_commands_doc():
 
     table(doc, ["Script (python scripts/…)", "What it does", "Creates / changes"],
           [Inches(2.0), Inches(2.6), Inches(2.1)], [
-        ("training/train_model.py", "Trains the binary Random Forest (100 trees) on a random 80/20 split and prints test accuracy",
-         "⚠ models/random_forest_model.pkl"),
-        ("training/train_multiclass.py", "Trains a Benign / Spyware / Ransomware / Trojan model (not used by the dashboard)",
-         "models/multiclass_random_forest.pkl"),
-        ("evaluation/evaluate_model.py", "Cross-validation, compares models, draws the plots, saves the best model",
-         "outputs/model_comparison.csv, confusion_matrix.png, roc_curve.png\n⚠ models/random_forest_model.pkl"),
+        ("training/train_models.py", "Removes duplicates, evaluates honestly (grouped by sample, unseen families, "
+         "one-rule shortcut check) and trains all three models; re-pins the hashes (~5 min)",
+         "⚠ models/*.pkl, models/model_card.json, model_hashes.json\ndocs/results/honest_evaluation.md/.csv"),
+        ("training/train_model.py, train_multiclass.py", "Superseded - they stop and point to train_models.py", "Nothing"),
+        ("evaluation/evaluate_model.py", "Compares model types on a random split and draws the plots (no longer saves a model)",
+         "outputs/model_comparison.csv, confusion_matrix.png, roc_curve.png"),
         ("evaluation/benchmark.py", "5-fold cross-validation of Random Forest, Gradient Boosting and Logistic Regression",
          "Console output only"),
         ("evaluation/explain_model.py", "Global SHAP summary plot of the trained model", "outputs/shap_summary.png"),
@@ -494,9 +494,9 @@ def build_commands_doc():
     command(doc, "Verify a custody manifest",
             "python -m hazmem.evidence_integrity verify outputs/cases/<case>/<evidence-id>/custody_manifest.json", "",
             "VERIFIED  …custody_manifest.json  (N events)")
-    warning(doc, "The ~100% accuracy printed by train_model.py / evaluate_model.py comes from a random split and is "
-                 "optimistic: near-identical snapshots of the same sample appear in both training and test data, and "
-                 "the model relies heavily on service/driver counts. See the README “Known Limitations”.")
+    warning(doc, "Even the honest grouped score (99.93%) mostly reflects the dataset: one rule on the number of services "
+                 "scores 99.66% because all clean data comes from one machine. Read docs/results/honest_evaluation.md and "
+                 "the README “Known limitations” before quoting accuracy.")
 
     heading(doc, "6.2 Quick checks of the trained model", 2)
     command(doc, "Score one CSV with the dashboard model",

@@ -19,6 +19,10 @@ GLOSSARY = [
     ("Malware score", "The Random Forest model's confidence (0-100%) that the snapshot is malicious."),
     ("Zero-day anomaly", "A second model (Isolation Forest) that flags memory that looks unlike anything it was "
                          "trained on — useful for new, unknown threats."),
+    ("Likely type", "When the verdict is not clean, a third model guesses ransomware, spyware or trojan. It is a "
+                    "hint only - right about two times in three on samples it had not seen."),
+    ("Processes tab", "For memory dumps: the processes that stand out (hidden, injected code, hidden DLL, wrong "
+                      "parent, look-alike name), graded High / Medium / Low. Leads to check, not proof."),
     ("SHAP", "Explains the verdict by showing how much each feature pushed the score towards malware or benign."),
     ("LIME", "An independent second explanation: simple rules learned around this one snapshot."),
     ("Hash (SHA-256 / SHA-1 / MD5)", "A fingerprint of a file. Change one byte and the fingerprint changes completely, so "
@@ -54,6 +58,13 @@ FAQ = [
      "Open **Hash checker**. Add the memory image, raw dump or CSV (or its path for large dumps) and paste the "
      "expected SHA-256, SHA-1 or MD5 — or upload the .sha256 file / tool log. A **MATCH** proves the file is "
      "bit-for-bit identical. The **Verify dump → CSV conversion** tab proves a CSV came unchanged from a memory image."),
+    ("How accurate is the AI?",
+     "On the research dataset it is right almost every time, even for malware families it never saw. But all of "
+     "its clean examples come from one computer, so a clean computer set up differently can be flagged. Open "
+     "**How reliable is this result?** under the verdict; full figures are in docs/results/honest_evaluation.md."),
+    ("Which process is the malware?",
+     "Analyse the memory dump itself (not a CSV) and open the **Processes** tab. It lists hidden processes, injected "
+     "code, hidden DLLs, wrong parents and look-alike names. Start with the High ones."),
     ("How long will an analysis take?",
      "An estimate is shown before you start (memory-dump extraction is the slow part: roughly 2–3 minutes per GB), "
      "and a countdown runs on the progress bar. Estimates learn from previous runs on this computer."),

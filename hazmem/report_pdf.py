@@ -219,6 +219,12 @@ def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.
         [Paragraph("Classification", cell_bold), Paragraph(CLASSIFICATION[result["risk"]], risk_style)],
         [Paragraph("Zero-Day Anomaly Check", cell_bold), Paragraph(xml_esc(anomaly_text), anomaly_style)],
     ]
+    family = result.get("family")
+    if family:
+        others = ", ".join(f"{n} {p * 100:.0f}%" for n, p in list(family["all"].items())[1:])
+        verdict_data.append([Paragraph("Likely Malware Type (hint)", cell_bold), Paragraph(
+            f"{xml_esc(family['type'])} ({family['probability'] * 100:.0f}%; {xml_esc(others)}). Indicative only - "
+            "about two in three correct on unseen samples.", cell_style)])
     verdict_table = Table(verdict_data, colWidths=[140, 400])
     verdict_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F8FAFC")),
@@ -228,6 +234,30 @@ def generate_pdf_report(result: dict, shap_df: pd.DataFrame = None, lime_df: pd.
     ]))
     story.append(verdict_table)
     story.append(Spacer(1, 6))
+
+    findings = result.get("process_findings")
+    if findings is not None:
+        story.append(Paragraph("Processes of Interest (per-process checks on the Volatility output)", cell_bold))
+        if findings:
+            rows = [[Paragraph(h, cell_header) for h in ("Level", "PID", "Process", "Why it stands out")]]
+            for f in findings[:15]:
+                style = cell_danger if f["level"] == "High" else cell_warning if f["level"] == "Medium" else cell_style
+                rows.append([Paragraph(f["level"], style), Paragraph(str(f["pid"]), cell_style),
+                             Paragraph(xml_esc(f["name"]), cell_bold),
+                             Paragraph(xml_esc("; ".join(f["reasons"] + f["details"])), cell_style)])
+            proc_table = Table(rows, colWidths=[50, 45, 95, 350], repeatRows=1)
+            proc_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E293B")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+            ]))
+            story.append(proc_table)
+            story.append(Paragraph("Leads for the examiner, not proof: legitimate software can trigger the weaker "
+                                   "checks.", cell_style))
+        else:
+            story.append(Paragraph("No process stood out in the per-process checks.", cell_style))
+        story.append(Spacer(1, 6))
 
     # ── 3. SHAP ───────────────────────────────────────────────
     story.append(Paragraph("3. Explainable AI: Key Decision Drivers (SHAP Global Attribution)", h2_style))

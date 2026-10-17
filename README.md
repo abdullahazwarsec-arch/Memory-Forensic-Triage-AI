@@ -53,7 +53,8 @@ that: a skull in a respirator with biohazard eyes.
 | | |
 |---|---|
 | 🧠 **Analysis** | Raw Windows memory dumps (`.raw .mem .vmem .dmp .lime …`) → Volatility 3 extracts 55 features automatically. Also accepts Volatility feature CSVs and built-in sample profiles. |
-| 🤖 **Detection** | Random Forest malware score with three risk tiers (Normal < 40 % → *Benign*, Suspicious 40–75 % → *Uncertain*, High risk ≥ 75 % → *Malware* — one set of thresholds everywhere), plus an Isolation Forest **zero-day** anomaly check. *Scan all snapshots* scores every snapshot at once. |
+| 🤖 **Detection** | Random Forest malware score with three risk tiers (Normal < 40 % → *Benign*, Suspicious 40–75 % → *Uncertain*, High risk ≥ 75 % → *Malware* — one set of thresholds everywhere), plus an Isolation Forest **zero-day** anomaly check and a **likely malware type** hint (ransomware / spyware / trojan). *Scan all snapshots* scores every snapshot at once. |
+| 🧬 **Processes** | For memory dumps, per-process checks on the Volatility output point to *which* process stands out: hidden processes, injected programs or code, hidden DLLs, wrong parent processes, look-alike names (`svch0st.exe`) and system names running from the wrong folder — graded High / Medium / Low. |
 | 🔍 **Explainability** | **SHAP** global drivers and **LIME** local rules as interactive charts and plain-English driver cards — *why* the model decided. |
 | 🔗 **Chain of custody** | SHA-256 + MD5 at every stage, an **HMAC-keyed custody ledger**, write-protected working copies, and verification of the hash reported by the acquisition tool. Analysis is **blocked** on any mismatch. |
 | 🧾 **Provenance** | Where the evidence came from (device, custodian, location, collector, time, tool) and who it is prepared for (recipient, purpose, reference) — sealed into the ledger and the report. |
@@ -178,16 +179,16 @@ Memory-Forensic-Triage-AI/
 │   └── assets/                    # background.js (interactive canvas), theme.js (light/dark), hazmem_logo.svg / .png
 │
 ├── scripts/
-│   ├── training/                  # train_model.py, train_multiclass.py
+│   ├── training/                  # train_models.py (honest evaluation + all models); old scripts kept, superseded
 │   ├── evaluation/                # evaluate_model.py, benchmark.py, explain_model.py, lime_example.py, verify_data_integrity.py
 │   ├── data/                      # sample-profile generators, zero-day simulator, class-balance check
 │   ├── reports/                   # standalone PDF report examples
 │   ├── admin/                     # manage_users.py (account recovery), pin_model_hashes.py
 │   └── docs/                      # build the Word documents in docs/
 │
-├── models/                        # Trained models + model_hashes.json (pinned SHA-256)
+├── models/                        # Trained models, model_card.json (honest metrics), model_hashes.json (pinned SHA-256)
 ├── data/                          # Sample profiles and simulated scenarios (dataset CSV not committed)
-├── tests/                         # pytest suite (111 tests)
+├── tests/                         # pytest suite (121 tests)
 ├── docs/                          # Viva guide, commands runbook, figures, screenshots, results
 │
 ├── outputs/                       # Generated locally: cases/, extracted/, reports/        (git-ignored)
@@ -240,10 +241,26 @@ certutil -hashfile <report>.pdf SHA256          # Windows   (Linux/macOS: sha256
 Volatility-derived features (processes, DLLs, handles, injected code, hidden processes, services, kernel callbacks), benign
 plus 15 malware families across ransomware, spyware and trojan categories.
 
-| Model | Accuracy | Precision | Recall | F1 | ROC-AUC | CV F1 (mean ± sd) |
-|---|---|---|---|---|---|---|
-| **Random Forest** (dashboard) | 0.9999 | 0.9998 | 1.0000 | 0.9999 | 1.0000 | 0.9998 ± 0.0001 |
-| Logistic Regression (baseline) | 0.9987 | 0.9985 | 0.9990 | 0.9987 | 0.9999 | 0.9991 ± 0.0001 |
+`scripts/training/train_models.py` removes the 569 duplicate rows and evaluates **honestly**: folds are grouped by
+malware sample (the ~10 snapshots of one sample never sit on both sides), whole families are held out, and a one-rule
+baseline checks for shortcuts. Full results: [`docs/results/honest_evaluation.md`](docs/results/honest_evaluation.md).
+
+| Test (Random Forest, benign vs malware) | Accuracy | Recall | ROC-AUC |
+|---|---|---|---|
+| Random 5-fold (the old method) | 99.98 % | 99.99 % | 1.0000 |
+| **Grouped by malware sample, 5-fold** | **99.93 %** | 99.89 % | 1.0000 |
+| Each of the 15 families held out completely | — | 97.5 – 100 % | — |
+| **One rule only:** `svcscan.nservices <= 390.5` | 99.66 % | — | — |
+
+| Malware-type model (ransomware / spyware / trojan) | Accuracy |
+|---|---|
+| Random 5-fold | 71.4 % |
+| **Grouped by malware sample** | **67.6 %** (chance 33 %) |
+
+**What this means:** grouping barely lowers the score, and unseen families are still caught — but a single rule on the
+number of services almost matches the model, because every benign snapshot comes from one machine (388–395 services).
+The model largely learns *"different from that machine"*, so clean dumps from other machines can be flagged. The
+dashboard says so under **How reliable is this result?**, and the malware type is shown only as a hint.
 
 <p align="center">
   <img src="docs/images/confusion_matrix.png" width="32%">
@@ -251,8 +268,8 @@ plus 15 malware families across ransomware, spyware and trojan categories.
   <img src="docs/images/shap_summary.png" width="32%">
 </p>
 
-> ⚠️ These scores are **optimistic** — see [Known limitations](#known-limitations). The **Isolation Forest** zero-day layer
-> flags memory unlike anything seen in training.
+> The confusion matrix and ROC curve above come from the earlier random split. The **Isolation Forest** zero-day
+> layer (trained on benign rows only) flags memory unlike anything seen in training.
 
 **Explainability:** SHAP (TreeExplainer) shows how much each feature pushed the verdict towards malware or benign; LIME fits
 local rules around the snapshot as an independent check. Both appear as diverging charts (red = towards malware,
@@ -262,6 +279,11 @@ blue = towards benign) with plain-English descriptions, and both are included in
 (`pslist`, `dlllist`, `handles`, `ldrmodules`, `malfind`, `psxview`, `modules`, `svcscan`, `callbacks`). A few features are
 approximations because Volatility 3 lacks some checks used to build the dataset (psxview session/desktop views, de-duplicated
 service records, `malfind.protection` as a sum of VAD protection codes). Windows images only.
+
+**Per-process findings:** `hazmem/process_findings.py` re-reads the same plugin output (saved as `process_findings.json`
+next to the extraction) and grades each process. Known false-alarm patterns are filtered (Volatility's duplicate
+psxview rows, exited processes, resource-only DLLs in System32, older genuine Windows names). Findings are leads for an
+analyst, not proof, and appear in the **Processes** tab and the PDF.
 
 ## Command-line tools
 
@@ -275,12 +297,14 @@ Run from the project root with the virtual environment active.
 | Verify a custody manifest | `python -m hazmem.evidence_integrity verify <custody_manifest.json>` |
 | Account recovery | `python scripts/admin/manage_users.py list \| unlock <user> \| reset-password <user> \| create <user> "<Name>" --role admin` |
 | Re-pin model hashes (after re-training) | `python scripts/admin/pin_model_hashes.py` |
-| Train / evaluate | `python scripts/training/train_model.py` · `python scripts/evaluation/evaluate_model.py` |
+| Train and honestly evaluate all models (~5 min) | `python scripts/training/train_models.py` |
+| Compare model types (random split) | `python scripts/evaluation/evaluate_model.py` |
 | Dataset audit | `python scripts/evaluation/verify_data_integrity.py` |
 | Rebuild the Word documents | `python scripts/docs/create_viva_doc.py` · `python scripts/docs/create_commands_runbook_docx.py` |
 
-> `train_model.py` and `evaluate_model.py` overwrite `models/random_forest_model.pkl`. Re-pin the hashes afterwards,
-> or the dashboard will (correctly) refuse to load the new model.
+> `train_models.py` replaces the three models, writes `models/model_card.json` and `docs/results/honest_evaluation.md`,
+> and re-pins the model hashes. If you train any other way, run `pin_model_hashes.py` or the dashboard will (correctly)
+> refuse to load the new model.
 
 ## Testing
 
@@ -291,7 +315,7 @@ python -m pytest
 
 The same suite runs automatically on GitHub (Actions → *tests*) for every push.
 
-**111 tests** (about 1–2 minutes) covering the custody ledger and forgery detection, model pinning, hashing and the hash checker (including the dump → CSV chain), time estimates, intake and feature gates, audit-log
+**121 tests** (about 1–2 minutes) covering the per-process checks and their false-alarm filters, the malware-type hint, the custody ledger and forgery detection, model pinning, hashing and the hash checker (including the dump → CSV chain), time estimates, intake and feature gates, audit-log
 tampering, duplicate writers and multi-process writes, archiving, the assistant's topic matching, and end-to-end dashboard
 flows (first-run setup, sign-in, lockout, idle timeout, revocation, a sealed triage run). Tests run against a throw-away
 key, account store, audit log and output folder — real evidence is never touched.
@@ -308,18 +332,17 @@ key, account store, audit log and output folder — real evidence is never touch
 
 ## Known limitations
 
-- **Optimistic accuracy.** Scores come from a random train/test split. Each malware sample has ~10 near-identical snapshots and the dataset has 534 duplicate rows, so near-copies appear in both train and test.
+- **Benign rows cannot be grouped.** The dataset gives malware snapshots a sample id but not benign ones, so the benign side of every test is still a random split.
 - **Shortcut learning.** Benign snapshots come from essentially one machine configuration (e.g. `svcscan.nservices` only ranges 388–395), so the model largely learns "differs from that benign machine". Benign-labelled profiles can score high, and real dumps from other Windows versions can be misjudged. SHAP/LIME correctly reveal this — they explain the model, not ground truth.
-- **Aggregate features only.** The verdict is based on 55 counts; the dashboard cannot yet point to the specific malicious process.
+- **Verdict from counts.** The ML verdict uses 55 whole-system counts. Per-process findings are rule-based leads from the Volatility output (memory dumps only) and are not used by the model.
 - **Keyed, not signed.** The ledger and audit log use a shared secret: anyone who can read `keys/` could forge them. There is no asymmetric signature or trusted timestamp, and an old log + head pair could be restored together.
 - **Local accounts.** No multi-factor authentication, plain HTTP on `localhost`, and reloading the browser signs you out. Anyone with access to `keys/` can reset accounts.
 - **Scope.** Windows memory images only; uploaded dumps are held in memory (use the path option for large dumps); Volatility needs internet on first use.
 
 ## Future work
 
-- Re-train with duplicates removed, a split grouped by sample, and benign dumps from many machines and Windows versions; calibrate probabilities and warn on out-of-distribution input.
-- Show per-process findings (injected regions, hidden processes, PIDs) from the saved Volatility output alongside the verdict.
-- Integrate the trained multi-class family model (ransomware / spyware / trojan).
+- Collect benign dumps from many machines and Windows versions, re-evaluate, calibrate probabilities and warn on out-of-distribution input.
+- Feed the per-process checks into the model (e.g. a process-level classifier) instead of keeping them as separate leads.
 - Digitally sign reports and manifests with trusted (RFC 3161) timestamps.
 - MFA/SSO and HTTPS for multi-user deployments; encrypted evidence storage and retention policies.
 - Case export/import and machine-readable (JSON/STIX) findings.
@@ -331,7 +354,8 @@ key, account store, audit log and output folder — real evidence is never touch
 | [`docs/Memory_Forensics_Commands_And_Execution_Runbook.docx`](docs/Memory_Forensics_Commands_And_Execution_Runbook.docx) | Every command explained: setup, dashboard, dumps, integrity, scripts, accounts, tests, Git, troubleshooting |
 | [`docs/Memory_Forensics_AI_Triage_Viva_Defense_Guide.docx`](docs/Memory_Forensics_AI_Triage_Viva_Defense_Guide.docx) | Architecture, data pipeline, models, XAI, viva questions and a live-demo script |
 | [`docs/images/`](docs/images) | Evaluation figures, diagrams and screenshots |
-| [`docs/results/model_comparison.csv`](docs/results/model_comparison.csv) | Model comparison metrics |
+| [`docs/results/honest_evaluation.md`](docs/results/honest_evaluation.md) | Grouped / leave-one-family-out evaluation, shortcut check, malware-type accuracy |
+| [`docs/results/model_comparison.csv`](docs/results/model_comparison.csv) | Model comparison metrics (random split) |
 
 ---
 

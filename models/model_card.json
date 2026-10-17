@@ -1,0 +1,138 @@
+{
+  "trained_utc": "2026-10-17 19:17 UTC",
+  "dataset": {
+    "file": "Obfuscated-MalMem2022.csv",
+    "sha256": "624ecb6c9229cf62bd3b8f65d23a2b132760e6bada458aa46eee134a313840c4",
+    "rows": 58596,
+    "duplicates_removed": 569,
+    "malware_samples": 2906,
+    "malware_snapshots": 28796,
+    "benign_snapshots": 29231
+  },
+  "binary": {
+    "random_cv": {
+      "accuracy": 0.9998448997880297,
+      "precision": 0.9997569528835805,
+      "recall": 0.9999305459091541,
+      "f1": 0.9998437418615553,
+      "roc_auc": 0.9999995473639525
+    },
+    "grouped_cv": {
+      "accuracy": 0.9993451324383477,
+      "precision": 0.9997914494264859,
+      "recall": 0.9988887345464648,
+      "f1": 0.9993398881284091,
+      "roc_auc": 0.9999983522147036
+    },
+    "without_svcscan_grouped_cv": {
+      "accuracy": 0.9993106657245765,
+      "precision": 0.9997219518976783,
+      "recall": 0.9988887345464648,
+      "f1": 0.9993051695386326,
+      "roc_auc": 0.9999967394760301
+    },
+    "leave_one_family_out": {
+      "Ransomware-Ako": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0005
+      },
+      "Ransomware-Conti": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0
+      },
+      "Ransomware-Maze": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.001
+      },
+      "Ransomware-Pysa": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0
+      },
+      "Ransomware-Shade": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0
+      },
+      "Spyware-180solutions": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0
+      },
+      "Spyware-CWS": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0005
+      },
+      "Spyware-Gator": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0
+      },
+      "Spyware-TIBS": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0
+      },
+      "Spyware-Transponder": {
+        "recall": 0.9750312109862672,
+        "false_alarm_rate": 0.0
+      },
+      "Trojan-Emotet": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0005
+      },
+      "Trojan-Reconyc": {
+        "recall": 0.9942602040816326,
+        "false_alarm_rate": 0.0
+      },
+      "Trojan-Refroso": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0
+      },
+      "Trojan-Scar": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0
+      },
+      "Trojan-Zeus": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0
+      },
+      "Ransomware": {
+        "recall": 1.0,
+        "false_alarm_rate": 0.0
+      },
+      "Spyware": {
+        "recall": 0.9938756762274166,
+        "false_alarm_rate": 0.0
+      },
+      "Trojan": {
+        "recall": 0.9992612916842549,
+        "false_alarm_rate": 0.0
+      }
+    },
+    "hardest_unseen_family": "Spyware-Transponder"
+  },
+  "shortcut": {
+    "feature": "svcscan.nservices",
+    "threshold": 390.5,
+    "one_rule_accuracy": 0.9965878217621025,
+    "benign_range": [
+      388,
+      395
+    ]
+  },
+  "family": {
+    "classes": [
+      "Ransomware",
+      "Spyware",
+      "Trojan"
+    ],
+    "random_cv_accuracy": 0.7144395054868732,
+    "grouped_cv_accuracy": 0.6761355743853313,
+    "grouped_recall": {
+      "Ransomware": 0.635093982988554,
+      "Spyware": 0.6972542615086251,
+      "Trojan": 0.6955466441536513
+    }
+  },
+  "versions": {
+    "scikit-learn": "1.9.1",
+    "pandas": "3.0.5",
+    "numpy": "2.4.6"
+  }
+}

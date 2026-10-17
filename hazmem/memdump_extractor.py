@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 
 from .evidence_integrity import hash_file, write_hash_sidecar
+from .process_findings import FINDINGS_FILE, find_suspicious_processes
 
 
 BASE_DIR      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # project root
@@ -358,7 +359,16 @@ def extract_features(dump_path: str, out_dir: str = None, progress_cb=None, max_
     if not report["integrity"]["dump_unchanged"]:
         report["warnings"].append("INTEGRITY ALERT: memory image hash changed during extraction!")
 
-    # Step 4: build feature row, save CSV and fingerprint it
+    # Step 4: per-process leads (before build_features, which consumes the nested rows)
+    try:
+        report["process_findings"] = find_suspicious_processes(plugin_rows)
+    except Exception as e:   # findings are an aid; never block the extraction
+        report["process_findings"] = []
+        report["warnings"].append(f"Per-process checks could not run ({e})")
+    with open(os.path.join(out_dir, FINDINGS_FILE), "w", encoding="utf-8") as f:
+        json.dump(report["process_findings"], f, indent=2)
+
+    # Step 5: build feature row, save CSV and fingerprint it
     features = build_features(plugin_rows)
     csv_path = os.path.join(out_dir, f"{dump_name}_features.csv")
     features.to_csv(csv_path, index=False)
