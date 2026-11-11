@@ -290,6 +290,9 @@ def list_archives(path: str) -> list:
 def verify_log(path: str, key: bytes = None) -> dict:
     """Re-verify the whole audit log chain, the genesis anchor and the head file."""
     key = key or ei.ledger_key()
+    if not os.path.isfile(path):
+        return {"log": path, "verified": False, "chained_lines": 0, "legacy_lines": 0, "bad_lines": [],
+                "problems": ["Audit log file does not exist yet"]}
     with open(path, "rb") as f:
         data = f.read()
     lines, problems = _split_lines(data), []

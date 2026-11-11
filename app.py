@@ -2217,4 +2217,12 @@ if __name__ == "__main__":
         # Enables running `python app.py` directly or clicking VS Code 'Run' button
         from streamlit.web import cli as stcli
         sys.argv = ["streamlit", "run", os.path.abspath(__file__)]
+        port = os.environ.get("PORT")
+        if port or os.environ.get("RENDER"):
+            sys.argv += [
+                "--server.port", port or "8501",
+                "--server.address", "0.0.0.0",
+                "--server.headless", "true",
+                "--server.fileWatcherType", "none",
+            ]
         sys.exit(stcli.main())

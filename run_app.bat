@@ -13,5 +13,5 @@ if not exist "venv\Scripts\streamlit.exe" (
 )
 
 echo Starting Streamlit server...
-".\venv\Scripts\streamlit.exe" run app.py
+".\venv\Scripts\streamlit.exe" run app.py --server.address localhost
 pause

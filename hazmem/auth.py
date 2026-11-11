@@ -123,7 +123,7 @@ def _load() -> dict:
 
 
 def _save(users: dict):
-    os.makedirs(os.path.dirname(USERS_PATH), exist_ok=True)
+    os.makedirs(os.path.dirname(USERS_PATH) or ".", exist_ok=True)
     tmp = f"{USERS_PATH}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump({"format": 1, "users": users, "hmac": _seal(users)}, f, indent=2)
