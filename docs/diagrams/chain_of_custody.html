@@ -1,0 +1,95 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Chain of Custody</title>
+<style>
+:root{--ink:#16213a;--muted:#5b6478;--line:#dfe3ee;--bg:#f4f6fb}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg)}
+body{width:1920px;height:800px;font-family:"Liberation Sans",Arial,sans-serif;color:var(--ink);padding:34px 44px}
+.emo{font-family:"Noto Color Emoji";line-height:1}
+code,.m{font-family:"DejaVu Sans Mono",monospace;font-size:12px}
+h1{font-size:40px;letter-spacing:-.5px}
+h1 span{color:#059669}
+.sub{font-size:18px;color:var(--muted);margin:6px 0 26px}
+/* timeline */
+.tl{position:relative;display:grid;grid-template-columns:repeat(9,1fr);gap:14px}
+.tl:before{content:"";position:absolute;left:40px;right:40px;top:44px;height:6px;border-radius:3px;background:linear-gradient(90deg,#2563eb,#0891b2,#dc2626,#16a34a)}
+.st{position:relative;text-align:center}
+.dot{width:94px;height:94px;margin:0 auto;border-radius:50%;background:#fff;border:5px solid var(--c);display:flex;align-items:center;justify-content:center;font-size:42px;position:relative;box-shadow:0 4px 14px rgba(22,33,58,.12)}
+.n{font-family:"Liberation Sans",Arial,sans-serif;position:absolute;top:-6px;right:-6px;width:30px;height:30px;border-radius:50%;background:var(--c);color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border-radius:16px;margin-top:14px;padding:14px 12px;min-height:150px;box-shadow:0 6px 18px rgba(22,33,58,.07);border-top:5px solid var(--c)}
+.card>b{font-size:16.5px;display:block;margin-bottom:6px}
+.card p{font-size:13.5px;line-height:1.4;color:#33405a}
+.ph{display:inline-block;margin-top:9px;font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--c);background:var(--cl);border-radius:20px;padding:3px 9px}
+.a{--c:#2563eb;--cl:#dbe7ff}.b{--c:#0891b2;--cl:#d5f3f8}.c{--c:#dc2626;--cl:#fde0e0}.d{--c:#16a34a;--cl:#d8f5e1}
+/* lower */
+.low{display:grid;grid-template-columns:1.55fr 1fr 1fr;gap:26px;margin-top:30px}
+.panel{background:#fff;border-radius:20px;padding:20px 24px;box-shadow:0 6px 22px rgba(22,33,58,.07)}
+.panel h4{font-size:15px;letter-spacing:.12em;color:var(--muted);margin-bottom:14px;display:flex;gap:8px;align-items:center}
+.panel h4 .emo{font-size:20px}
+.chain{display:flex;align-items:center;gap:6px}
+.blk{flex:1;border:2px solid #a7f3d0;background:#f0fdf9;border-radius:14px;padding:10px 12px;font-size:12.5px;line-height:1.5}
+.blk b{font-size:14px}
+.blk .h{color:#047857}
+.blk.bad{border-color:#fecaca;background:#fef2f2}
+.blk.bad .h{color:#b91c1c}
+.lnk{font-size:24px}
+.cap{font-size:13.5px;color:var(--muted);margin-top:12px;line-height:1.45}
+.legend{display:flex;flex-direction:column;gap:9px}
+.lg{display:flex;gap:12px;align-items:center;font-size:14px;line-height:1.35}
+.lg .s{flex:none;width:185px;font-weight:800;font-size:13px;border-radius:10px;padding:7px 10px;text-align:center}
+.files{font-size:14px;line-height:1.5}
+.files div{display:flex;gap:10px;align-items:flex-start;margin-bottom:9px}
+.files .emo{font-size:22px}
+.term{background:#16213a;color:#d1fae5;border-radius:10px;padding:9px 12px;margin-top:6px;font-size:12.5px;line-height:1.6}
+</style></head><body>
+
+<h1><span>Chain of custody</span> — proving the evidence never changed</h1>
+<div class="sub">Every file is fingerprinted with SHA-256 and MD5. The fingerprint is re-computed at each stage and must match the first one.</div>
+
+<div class="tl">
+ <div class="st a"><div class="dot emo">📥<span class="n">1</span></div><div class="card"><b>Acquisition</b><p>Hash of the exact bytes received. This is the <b>baseline</b> every later check compares to.</p><span class="ph">EVIDENCE IN</span></div></div>
+ <div class="st a"><div class="dot emo">🔒<span class="n">2</span></div><div class="card"><b>Working copy</b><p>Uploaded evidence saved as a write-protected copy; its hash must match the baseline.</p><span class="ph">EVIDENCE IN</span></div></div>
+ <div class="st b"><div class="dot emo">🧠<span class="n">3</span></div><div class="card"><b>Pre-extraction</b><p>Memory dump re-hashed just before Volatility 3 reads it.</p><span class="ph">DUMPS ONLY</span></div></div>
+ <div class="st b"><div class="dot emo">🔬<span class="n">4</span></div><div class="card"><b>Post-extraction</b><p>Re-hashed after Volatility, proving the tool did not alter the dump.</p><span class="ph">DUMPS ONLY</span></div></div>
+ <div class="st b"><div class="dot emo">📄<span class="n">5</span></div><div class="card"><b>Derived data</b><p>The 55-feature CSV is hashed and linked to the dump’s hash.</p><span class="ph">DUMPS ONLY</span></div></div>
+ <div class="st c"><div class="dot emo">📂<span class="n">6</span></div><div class="card"><b>Data load</b><p>CSV re-hashed at the moment it is parsed into the dashboard.</p><span class="ph">ANALYSIS</span></div></div>
+ <div class="st c"><div class="dot emo">🔁<span class="n">7</span></div><div class="card"><b>Pre-analysis</b><p>Evidence and CSV re-hashed right before the AI models run.</p><span class="ph">ANALYSIS</span></div></div>
+ <div class="st c"><div class="dot emo">🎯<span class="n">8</span></div><div class="card"><b>Analysis input</b><p>The exact 55-number vector sent to the models is hashed and matched to the verified file.</p><span class="ph">ANALYSIS</span></div></div>
+ <div class="st d"><div class="dot emo">📑<span class="n">9</span></div><div class="card"><b>Report</b><p>Everything re-hashed, PDF built, then the PDF’s own hash is recorded (sealed).</p><span class="ph">REPORT</span></div></div>
+</div>
+
+<div class="low">
+ <div class="panel">
+  <h4><span class="emo">⛓️</span>HOW THE LEDGER DETECTS TAMPERING</h4>
+  <div class="chain">
+   <div class="blk"><b>#1 Acquisition</b><br>file SHA-256 <span class="m">9c1e…</span><br>previous <span class="m">—</span><br><span class="h">entry hash <span class="m">A7F2…</span></span></div>
+   <div class="lnk emo">🔗</div>
+   <div class="blk"><b>#2 Pre-analysis</b><br>file SHA-256 <span class="m">9c1e…</span> ✓<br>previous <span class="m">A7F2…</span><br><span class="h">entry hash <span class="m">3B90…</span></span></div>
+   <div class="lnk emo">🔗</div>
+   <div class="blk bad"><b>#3 Report</b> <span class="emo">⚠️</span><br>someone edits entry #2<br>→ its hash is no longer <span class="m">3B90…</span><br><span class="h">link broken → detected</span></div>
+  </div>
+  <div class="cap">Each entry records the analyst, time, stage and hashes, plus the hash of the entry before it. Changing any past entry breaks every link after it. If any re-computed file hash differs from the baseline, analysis and reporting are <b>blocked</b>.</div>
+ </div>
+
+ <div class="panel">
+  <h4><span class="emo">🚦</span>STATUS OF EACH CHECK</h4>
+  <div class="legend">
+   <div class="lg"><span class="s" style="background:#dbeafe;color:#1e40af">🔵 RECORDED</span>First hash of a new file (the baseline)</div>
+   <div class="lg"><span class="s" style="background:#dcfce7;color:#166534">🟢 MATCH</span>Re-computed hash equals the baseline</div>
+   <div class="lg"><span class="s" style="background:#fee2e2;color:#991b1b">🔴 MISMATCH</span>File changed → work is blocked and logged</div>
+   <div class="lg"><span class="s" style="background:#ffedd5;color:#9a3412">🟠 NOT ACCESSIBLE</span>File missing or unreadable at check time</div>
+  </div>
+ </div>
+
+ <div class="panel">
+  <h4><span class="emo">🗂️</span>WHAT IS SAVED PER CASE</h4>
+  <div class="files">
+   <div><span class="emo">📁</span><span><code>outputs/cases/&lt;case&gt;/case.json</code><br>sessions: analyst, opened / closed times, evidence items</span></div>
+   <div><span class="emo">📜</span><span><code>&lt;evidence-id&gt;/custody_manifest.json</code><br>the full ledger for that item</span></div>
+   <div><span class="emo">📑</span><span>PDF report + <code>.sha256</code> sidecar</span></div>
+  </div>
+  <div style="font-size:13.5px;color:var(--muted)">Anyone can re-check a file independently:</div>
+  <div class="term">&gt; certutil -hashfile report.pdf SHA256<br>$ sha256sum report.pdf</div>
+ </div>
+</div>
+</body></html>

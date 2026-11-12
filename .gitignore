@@ -26,3 +26,6 @@ logs/*
 
 # ── Office lock files ────────────────────────────────────────────────────────
 ~$*
+
+# Rendered diagram build files
+docs/diagrams/_build/
