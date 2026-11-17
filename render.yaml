@@ -8,4 +8,14 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: HAZMEM_ADMIN_USER
+        value: admin
+      - key: HAZMEM_ADMIN_PASSWORD
+        value: Str0ngPassw0rd
+      - key: HAZMEM_RESET_ADMIN
+        value: "1"
+      - key: HAZMEM_DEMO_USER
+        value: viewer
+      - key: HAZMEM_DEMO_PASSWORD
+        value: HazMem2026Demo
 

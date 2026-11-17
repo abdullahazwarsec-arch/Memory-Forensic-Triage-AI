@@ -155,8 +155,18 @@ def _seed_from_env():
     users = _load()
     if not users:
         try:
-            create_user(admin_user, admin_name, "admin", admin_pass,
-                        created_by="environment-seed", must_change_password=False)
+            with _lock:
+                users = _load()
+                if not users:
+                    users[admin_user] = {
+                        "full_name": admin_name, "role": "admin",
+                        "password_hash": hash_password(admin_pass),
+                        "active": True, "must_change_password": False,
+                        "created_utc": _iso(_now()), "created_by": "environment-seed",
+                        "last_login_utc": None, "failed_attempts": 0, "locked_until": None,
+                    }
+                    _save(users)
+                    audit("USER_CREATED", admin_user, role="admin", name=admin_name, by="environment-seed")
         except Exception as e:
             _log.warning(f"AUTH | EVENT=ENV_SEED_FAILED | REASON={e}")
     elif os.environ.get("HAZMEM_RESET_ADMIN") == "1":
@@ -164,7 +174,6 @@ def _seed_from_env():
             with _lock:
                 users = _load()
                 if admin_user in users:
-                    _check_password(admin_pass, admin_user)
                     rec = users[admin_user]
                     rec["password_hash"] = hash_password(admin_pass)
                     rec["failed_attempts"] = 0
@@ -183,30 +192,29 @@ def _seed_from_env():
     demo_name = (os.environ.get("HAZMEM_DEMO_NAME") or "Demo Viewer").strip()
     if not (demo_user and demo_pass):
         return
-    users = _load()
-    if demo_user not in users:
-        try:
-            create_user(demo_user, demo_name, "analyst", demo_pass,
-                        created_by="environment-seed", must_change_password=False)
-        except Exception as e:
-            _log.warning(f"AUTH | EVENT=ENV_DEMO_SEED_FAILED | REASON={e}")
-    else:
-        # Always reset password and unlock the demo account on startup so
-        # lockouts caused by visitors entering the wrong password do not
-        # permanently block other LinkedIn viewers.
-        try:
-            with _lock:
-                users = _load()
-                if demo_user in users:
-                    rec = users[demo_user]
-                    rec["password_hash"] = hash_password(demo_pass)
-                    rec["failed_attempts"] = 0
-                    rec["locked_until"] = None
-                    rec["active"] = True
-                    rec["must_change_password"] = False
-                    _save(users)
-        except Exception as e:
-            _log.warning(f"AUTH | EVENT=ENV_DEMO_RESET_FAILED | REASON={e}")
+    try:
+        with _lock:
+            users = _load()
+            if demo_user not in users:
+                users[demo_user] = {
+                    "full_name": demo_name, "role": "analyst",
+                    "password_hash": hash_password(demo_pass),
+                    "active": True, "must_change_password": False,
+                    "created_utc": _iso(_now()), "created_by": "environment-seed",
+                    "last_login_utc": None, "failed_attempts": 0, "locked_until": None,
+                }
+                _save(users)
+                audit("USER_CREATED", demo_user, role="analyst", name=demo_name, by="environment-seed")
+            else:
+                rec = users[demo_user]
+                rec["password_hash"] = hash_password(demo_pass)
+                rec["failed_attempts"] = 0
+                rec["locked_until"] = None
+                rec["active"] = True
+                rec["must_change_password"] = False
+                _save(users)
+    except Exception as e:
+        _log.warning(f"AUTH | EVENT=ENV_DEMO_RESET_FAILED | REASON={e}")
 
 
 def has_users() -> bool:
