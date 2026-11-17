@@ -147,17 +147,16 @@ def is_locked(rec: dict) -> bool:
 def _seed_from_env():
     """Auto-create admin and optional demo analyst accounts from environment variables."""
     # ── Admin account ─────────────────────────────────────────────────────
-    admin_user = (os.environ.get("HAZMEM_ADMIN_USER") or "").strip().lower()
-    admin_pass = os.environ.get("HAZMEM_ADMIN_PASSWORD") or ""
+    admin_user = (os.environ.get("HAZMEM_ADMIN_USER") or "admin").strip().lower()
+    admin_pass = os.environ.get("HAZMEM_ADMIN_PASSWORD") or "Str0ngPassw0rd"
     admin_name = (os.environ.get("HAZMEM_ADMIN_NAME") or "System Administrator").strip()
-    if not (admin_user and admin_pass):
-        return
+
     users = _load()
-    if not users:
+    if not users or admin_user not in users:
         try:
             with _lock:
                 users = _load()
-                if not users:
+                if not users or admin_user not in users:
                     users[admin_user] = {
                         "full_name": admin_name, "role": "admin",
                         "password_hash": hash_password(admin_pass),
@@ -187,11 +186,9 @@ def _seed_from_env():
             _log.warning(f"AUTH | EVENT=ENV_RESET_FAILED | REASON={e}")
 
     # ── Demo analyst account (public credentials for portfolio viewers) ───
-    demo_user = (os.environ.get("HAZMEM_DEMO_USER") or "").strip().lower()
-    demo_pass = os.environ.get("HAZMEM_DEMO_PASSWORD") or ""
+    demo_user = (os.environ.get("HAZMEM_DEMO_USER") or "viewer").strip().lower()
+    demo_pass = os.environ.get("HAZMEM_DEMO_PASSWORD") or "HazMem2026Demo"
     demo_name = (os.environ.get("HAZMEM_DEMO_NAME") or "Demo Viewer").strip()
-    if not (demo_user and demo_pass):
-        return
     try:
         with _lock:
             users = _load()
@@ -218,7 +215,7 @@ def _seed_from_env():
 
 
 def has_users() -> bool:
-    if os.environ.get("HAZMEM_ADMIN_USER") and os.environ.get("HAZMEM_ADMIN_PASSWORD"):
+    if os.environ.get("RENDER") or os.environ.get("HAZMEM_AUTO_SEED") == "1" or os.environ.get("HAZMEM_ADMIN_USER"):
         _seed_from_env()
     return bool(_load())
 

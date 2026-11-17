@@ -18,4 +18,6 @@ services:
         value: viewer
       - key: HAZMEM_DEMO_PASSWORD
         value: HazMem2026Demo
+      - key: FORENSICS_LEDGER_KEY
+        value: 21d4b52bee254e8c17a188e79cb8ff7f07ee07b76d5837fff8bb515b1af2ecd5
 
