@@ -145,6 +145,8 @@ def is_locked(rec: dict) -> bool:
 
 # ── Queries ───────────────────────────────────────────────────────────────────
 def _seed_from_env():
+    """Auto-create admin and optional demo analyst accounts from environment variables."""
+    # ── Admin account ─────────────────────────────────────────────────────
     admin_user = (os.environ.get("HAZMEM_ADMIN_USER") or "").strip().lower()
     admin_pass = os.environ.get("HAZMEM_ADMIN_PASSWORD") or ""
     admin_name = (os.environ.get("HAZMEM_ADMIN_NAME") or "System Administrator").strip()
@@ -174,6 +176,37 @@ def _seed_from_env():
                     audit("USER_UNLOCKED", admin_user, by="environment-reset")
         except Exception as e:
             _log.warning(f"AUTH | EVENT=ENV_RESET_FAILED | REASON={e}")
+
+    # ── Demo analyst account (public credentials for portfolio viewers) ───
+    demo_user = (os.environ.get("HAZMEM_DEMO_USER") or "").strip().lower()
+    demo_pass = os.environ.get("HAZMEM_DEMO_PASSWORD") or ""
+    demo_name = (os.environ.get("HAZMEM_DEMO_NAME") or "Demo Viewer").strip()
+    if not (demo_user and demo_pass):
+        return
+    users = _load()
+    if demo_user not in users:
+        try:
+            create_user(demo_user, demo_name, "analyst", demo_pass,
+                        created_by="environment-seed", must_change_password=False)
+        except Exception as e:
+            _log.warning(f"AUTH | EVENT=ENV_DEMO_SEED_FAILED | REASON={e}")
+    else:
+        # Always reset password and unlock the demo account on startup so
+        # lockouts caused by visitors entering the wrong password do not
+        # permanently block other LinkedIn viewers.
+        try:
+            with _lock:
+                users = _load()
+                if demo_user in users:
+                    rec = users[demo_user]
+                    rec["password_hash"] = hash_password(demo_pass)
+                    rec["failed_attempts"] = 0
+                    rec["locked_until"] = None
+                    rec["active"] = True
+                    rec["must_change_password"] = False
+                    _save(users)
+        except Exception as e:
+            _log.warning(f"AUTH | EVENT=ENV_DEMO_RESET_FAILED | REASON={e}")
 
 
 def has_users() -> bool:
